@@ -15,54 +15,31 @@ import numpy as np
 from typing import Tuple, Optional
 import sys
 import os
+import importlib.util
 
-# Import configuration defaults
-import sys, os
-try:
-    # Try multiple paths to find config
-    possible_config_paths = [
-        os.path.join(os.path.dirname(__file__), '..', 'config'),  # Source tree
-        '/home/mohammedazab/ws/src/race_stack/lqr_contoller/config',  # Absolute path (fixed typo)
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')  # Alternative relative
-    ]
-    
-    config_imported = False
-    for config_path in possible_config_paths:
-        abs_path = os.path.abspath(config_path)
-        if os.path.exists(abs_path):
-            if abs_path not in sys.path:
-                sys.path.insert(0, abs_path)
-            try:
-                import config as default_config
-                #print(f"✅ Using config.py from {abs_path}")
-                config_imported = True
-                break
-            except ImportError as e:
-                continue
-        else:
-            print(f"❌ Path does not exist: {abs_path}")
-    
-    if not config_imported:
-        raise ImportError("Config module not found in any expected location")
-        
-except ImportError as e:
-    # Fallback if config.py is not available
-    print(f"Warning: {e}")
-    class DefaultConfig:
-        def __init__(self):
-            # Vehicle Parameters
-            self.wheelbase = 0.33
-            self.dt = 0.05
-            
-            # Control Limits
-            self.max_acceleration = 5.0
-            self.max_deceleration = 5.0
-            self.max_steering_angle = 0.5
-            self.min_speed = 0.1
-            self.max_speed = 8.0
+# Import config using absolute path to avoid conflicts
+def _load_config():
+    """Load configuration module safely."""
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config.py')
+        spec = importlib.util.spec_from_file_location("lqr_config", config_path)
+        config_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(config_module)
+        return config_module
+    except Exception:
+        # Fallback to default values
+        class DefaultConfig:
+            wheelbase = 0.33
+            dt = 0.05
+            max_acceleration = 5.0
+            max_deceleration = 9.0
+            max_steering_angle = 0.9
+            max_speed = 15.0
+        return DefaultConfig()
 
+# Load config at module level
+_config = _load_config()
 
-    default_config = DefaultConfig()
 
 class KinematicBicycleModel:
     """
@@ -87,8 +64,8 @@ class KinematicBicycleModel:
             wheelbase: Distance between front and rear axles [m]
             dt: Discrete time step [s]
         """
-        self.L = wheelbase if wheelbase is not None else default_config.wheelbase
-        self.dt = dt if dt is not None else default_config.dt
+        self.L = wheelbase if wheelbase is not None else _config.wheelbase
+        self.dt = dt if dt is not None else _config.dt
 
     def dynamics(self, state: np.ndarray, control: np.ndarray) -> np.ndarray:
         """
@@ -188,8 +165,8 @@ class KinematicBicycleModel:
         if not np.all(np.isfinite(state)):
             return False
 
-        # Check velocity bounds
-        if v < -1.0 or v > default_config.max_speed:  # Allow small reverse velocity
+        # Check velocity bounds (from config)
+        if v < -1.0 or v > _config.max_speed:  # Allow small reverse velocity
             return False
 
         # Normalize heading angle to [-π, π]
@@ -220,8 +197,8 @@ class KinematicBicycleModel:
         if not np.all(np.isfinite(control)):
             return False
 
-        max_accel = max_acceleration if max_acceleration is not None else max(default_config.max_acceleration, default_config.max_deceleration)
-        max_steer = max_steering if max_steering is not None else default_config.max_steering_angle
+        max_accel = max_acceleration if max_acceleration is not None else max(_config.max_acceleration, _config.max_deceleration)
+        max_steer = max_steering if max_steering is not None else _config.max_steering_angle
 
         # Check acceleration bounds
         if abs(a) > max_accel:
