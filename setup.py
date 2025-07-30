@@ -30,8 +30,6 @@ setup(
     entry_points={
         'console_scripts': [
             'lqr_node = lqr_controller.lqr_node:main',
-            'lqr_visualizer = scripts.lqr_visualizer:main',
-            'lqr_visualizer_standalone = scripts.lqr_visualizer_standalone:main',
         ],
     },
 )
