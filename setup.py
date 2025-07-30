@@ -14,17 +14,24 @@ setup(
         (f'share/{package_name}', ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'scripts'), glob('scripts/*.py')),
+        (os.path.join('share', package_name, 'scripts'), glob('scripts/*.sh')),
+        (os.path.join('share', package_name, 'scripts'), glob('scripts/*.ini')),
+        (os.path.join('share', package_name, 'scripts'), glob('scripts/*.txt')),
+        (os.path.join('share', package_name, 'scripts'), glob('scripts/README.md')),
     ],
-    install_requires=['setuptools', 'numpy', 'scipy', 'pyyaml'],
+    install_requires=['setuptools', 'numpy', 'scipy', 'pyyaml', 'matplotlib'],
     zip_safe=True,
     maintainer='Mohammed Azab',
     maintainer_email='mohammed@azab.io',
-    description='Linear Quadratic Regulator (LQR) controller for autonomous systems.',
+    description='Linear Quadratic Regulator (LQR) controller for autonomous systems with GUI visualizer.',
     license='MIT',
     tests_require=['pytest', 'pytest-cov'],
     entry_points={
         'console_scripts': [
-            'lqr_node = lqr_controller.lqr_node:main'
+            'lqr_node = lqr_controller.lqr_node:main',
+            'lqr_visualizer = scripts.lqr_visualizer:main',
+            'lqr_visualizer_standalone = scripts.lqr_visualizer_standalone:main',
         ],
     },
 )

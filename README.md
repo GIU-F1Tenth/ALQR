@@ -46,6 +46,35 @@ The controller supports extensive parameter configuration. See `config/lqr_param
 ### Published Topics
 - `/drive` (ackermann_msgs/AckermannDriveStamped): Control commands
 - `/lqr_controller/diagnostics` (diagnostic_msgs/DiagnosticArray): Controller diagnostics
+- `/lqr_controller/state_error` (std_msgs/Float32): State tracking error
+
+## Visualization
+
+The package includes a comprehensive Python GUI visualizer for real-time monitoring and analysis:
+
+### GUI Visualizer Features
+- **Real-time trajectory tracking**: 2D plot showing vehicle path vs reference trajectory
+- **Control input monitoring**: Time series plots of acceleration and steering commands
+- **Performance metrics**: State error tracking, control frequency, and timing statistics
+- **System diagnostics**: Controller status, safety states, and failure detection
+
+### Quick Start (Standalone Demo)
+```bash
+cd scripts/
+./launch_visualizer.sh standalone
+```
+
+### ROS2 Integration
+```bash
+# Terminal 1: Launch LQR controller
+ros2 launch lqr_controller lqr_controller.launch.py
+
+# Terminal 2: Launch visualizer
+cd scripts/
+./launch_visualizer.sh ros2
+```
+
+For detailed visualizer documentation, see `scripts/README.md`.
 
 ## Author
 

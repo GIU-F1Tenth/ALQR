@@ -1,0 +1,28 @@
+# LQR Controller Visualizer Requirements
+# Install with: pip install -r requirements.txt
+
+# Core GUI and plotting
+matplotlib>=3.5.0
+numpy>=1.21.0
+
+# For ROS2 version (optional)
+# These are only needed if using the ROS2-connected version
+# Comment out if using standalone version only
+# rclpy
+# geometry-msgs
+# nav-msgs
+# ackermann-msgs
+# std-msgs
+# diagnostic-msgs
+# tf-transformations
+
+# GUI framework (usually included with Python)
+# tkinter  # Built-in with most Python installations
+
+# Optional: Enhanced plotting capabilities
+# seaborn>=0.11.0
+# plotly>=5.0.0
+
+# Development and testing
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
