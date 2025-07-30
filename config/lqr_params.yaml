@@ -1,0 +1,48 @@
+# LQR Controller Configuration
+# Linear Quadratic Regulator parameters for F1TENTH trajectory tracking
+
+# Vehicle Parameters
+wheelbase: 0.33 # Distance between front and rear axles [m]
+dt: 0.05 # Control time step [s]
+
+# Control Limits
+max_acceleration: 5.0 # Maximum acceleration [m/s²]
+max_deceleration: 5.0 # Maximum deceleration [m/s²]
+max_steering_angle: 0.5 # Maximum steering angle [rad] (~28.6 degrees)
+min_speed: 0.1 # Minimum allowed speed [m/s]
+max_speed: 8.0 # Maximum allowed speed [m/s]
+
+# LQR Cost Function Weights
+# Higher weights penalize deviations more heavily
+lqr_weights:
+  position_weight: 10.0 # Weight for position tracking (x, y)
+  velocity_weight: 1.0 # Weight for velocity tracking
+  heading_weight: 5.0 # Weight for heading tracking
+  acceleration_weight: 0.1 # Weight for acceleration effort
+  steering_weight: 1.0 # Weight for steering effort
+
+# Control Parameters
+control_hz: 20.0 # Control loop frequency [Hz]
+lookahead_distance: 0.5 # Lookahead distance for reference point [m]
+enable_feedforward: true # Enable feedforward control from reference
+
+# Safety Parameters
+enable_safety_checks: true # Enable safety monitoring
+safety_timeout: 1.0 # Timeout for data freshness [s]
+emergency_brake_threshold: 2.0 # Emergency brake acceleration [m/s²]
+
+# ROS2 Topics
+odom_topic: "/car_state/odom"
+reference_topic: "/horizon_mapper/reference_trajectory"
+status_topic: "/horizon_mapper/path_ready"
+control_topic: "/drive"
+pose_estimate_topic: "/initialpose"
+
+# Quality of Service
+qos_depth: 10 # ROS2 QoS queue depth
+
+# Logging and Debug
+enable_logging: true # Enable general logging
+debug_logging_enabled: false # Enable verbose debug logging
+performance_logging_enabled: true # Enable performance metrics logging
+log_frequency_divider: 10 # Log every N control iterations
