@@ -7,27 +7,42 @@ dt: 0.05 # Control time step [s]
 
 # Control Limits
 max_acceleration: 5.0 # Maximum acceleration [m/s²]
-max_deceleration: 5.0 # Maximum deceleration [m/s²]
-max_steering_angle: 0.5 # Maximum steering angle [rad] (~28.6 degrees)
+max_deceleration: 9.0 # Maximum deceleration [m/s²]
+max_steering_angle: 0.9 # Maximum steering angle [rad] (~51.6 degrees)
 min_speed: 0.1 # Minimum allowed speed [m/s]
-max_speed: 8.0 # Maximum allowed speed [m/s]
+max_speed: 15.0 # Maximum allowed speed [m/s]
 
 # LQR Cost Function Weights
 # Higher weights penalize deviations more heavily
 lqr_weights:
-  position_weight: 10.0 # Weight for position tracking (x, y)
+  position_weight: 5.0 # Weight for position tracking (x, y)
   velocity_weight: 1.0 # Weight for velocity tracking
-  heading_weight: 5.0 # Weight for heading tracking
-  acceleration_weight: 0.1 # Weight for acceleration effort
-  steering_weight: 1.0 # Weight for steering effort
+  heading_weight: 6.0 # Weight for heading tracking
+  acceleration_weight: 0.3 # Weight for acceleration effort
+  steering_weight: 4.0 # Weight for steering effort
 
 # Control Parameters
 control_hz: 20.0 # Control loop frequency [Hz]
-lookahead_distance: 0.5 # Lookahead distance for reference point [m]
+lookahead_distance: 1.5 # Lookahead distance for reference point [m]
 enable_feedforward: true # Enable feedforward control from reference
 
+# Enhanced Anti-Wobble Parameters
+min_lookahead_distance: 0.7 # Minimum lookahead distance [m]
+max_lookahead_distance: 2.5 # Maximum lookahead distance [m]
+lookahead_time: 0.8 # Lookahead time [s]
+
+# Curve Detection and Handling
+enable_curve_detection: true # Enable curve detection and handling
+curve_lookahead_points: 5 # Number of points to look ahead for curve detection
+max_curvature_threshold: 1.0 # Maximum curvature threshold for curve detection
+curve_speed_factor: 0.7 # Speed reduction factor in curves
+
+# Steering Rate Limiting (Critical for anti-wobble)
+enable_steering_rate_limit: true # Enable steering rate limiting
+max_steering_rate: 1.5 # Maximum steering rate [rad/s]
+
 # Safety Parameters
-enable_safety_checks: true # Enable safety monitoring
+enable_safety_checks: false # Enable safety monitoring
 safety_timeout: 1.0 # Timeout for data freshness [s]
 emergency_brake_threshold: 2.0 # Emergency brake acceleration [m/s²]
 

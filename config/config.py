@@ -6,19 +6,19 @@ dt = 0.05
 
 # Control Limits
 max_acceleration = 5.0
-max_deceleration = 5.0
-max_steering_angle = 0.5
+max_deceleration = 9.0
+max_steering_angle = 0.9
 min_speed = 0.1
-max_speed = 8.0
+max_speed = 15.0
 
 # LQR Cost Function Weights
 # Higher weights penalize deviations more heavily
 #lqr_weights=
 position_weight = 5.0
 velocity_weight = 1.0
-heading_weight = 8.0
-acceleration_weight = 0.2
-steering_weight = 2.0
+heading_weight = 6.0
+acceleration_weight = 0.3
+steering_weight = 4.0
 
 # Control Parameters
 control_hz = 20.0
@@ -26,19 +26,19 @@ lookahead_distance = 1.5
 enable_feedforward = True
 
 # Enhanced Anti-Wobble Parameters
-min_lookahead_distance = 0.5
+min_lookahead_distance = 0.7
 max_lookahead_distance = 2.5
 lookahead_time = 0.8
 
 # Curve Detection and Handling
 enable_curve_detection = True
 curve_lookahead_points = 5
-max_curvature_threshold = 2.0
+max_curvature_threshold = 1.0
 curve_speed_factor = 0.7
 
 # Steering Rate Limiting (Critical for anti-wobble)
 enable_steering_rate_limit = True
-max_steering_rate = 3.0
+max_steering_rate = 1.5
 
 # Safety Parameters
 enable_safety_checks = False
