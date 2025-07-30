@@ -21,7 +21,7 @@ from nav_msgs.msg import Odometry
 from ackermann_msgs.msg import AckermannDriveStamped
 from std_msgs.msg import Bool, Float32
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-from giu_f1t_interfaces.msg import VehicleStateArray, VehicleState
+from giu_f1t_interfaces.msg import VehicleStateArray
 from tf_transformations import euler_from_quaternion
 
 try:
@@ -30,6 +30,136 @@ try:
 except ImportError:
     from lqr_controller import LQRController
     from kinematic_bicycle_model import KinematicBicycleModel
+    
+
+# Import configuration defaults
+import sys, os
+try:
+    # Try multiple paths to find config
+    possible_config_paths = [
+        os.path.join(os.path.dirname(__file__), '..', 'config'),  # Source tree
+        '/home/mohammedazab/ws/src/race_stack/lqr_contoller/config',  # Absolute path (fixed typo)
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')  # Alternative relative
+    ]
+    
+    config_imported = False
+    for config_path in possible_config_paths:
+        abs_path = os.path.abspath(config_path)
+        if os.path.exists(abs_path):
+            if abs_path not in sys.path:
+                sys.path.insert(0, abs_path)
+            try:
+                import config
+                print(f"✅ Using config.py from {abs_path}")
+                config_imported = True
+                break
+            except ImportError as e:
+                print(f"⚠️ Failed to import from {abs_path}: {e}")
+                continue
+        else:
+            print(f"❌ Path does not exist: {abs_path}")
+    
+    if not config_imported:
+        raise ImportError("Config module not found in any expected location")
+    
+    # Create a config object from the module variables
+    class ConfigWrapper:
+        def __init__(self, config_module):
+            # Vehicle Parameters
+            self.wheelbase = getattr(config_module, 'wheelbase', 0.33)
+            self.dt = getattr(config_module, 'dt', 0.05)
+            
+            # Control Limits
+            self.max_acceleration = getattr(config_module, 'max_acceleration', 5.0)
+            self.max_deceleration = getattr(config_module, 'max_deceleration', 5.0)
+            self.max_steering_angle = getattr(config_module, 'max_steering_angle', 0.5)
+            self.min_speed = getattr(config_module, 'min_speed', 0.1)
+            self.max_speed = getattr(config_module, 'max_speed', 8.0)
+            
+            # LQR Cost Function Weights
+            self.position_weight = getattr(config_module, 'position_weight', 10.0)
+            self.velocity_weight = getattr(config_module, 'velocity_weight', 1.0)
+            self.heading_weight = getattr(config_module, 'heading_weight', 5.0)
+            self.acceleration_weight = getattr(config_module, 'acceleration_weight', 0.1)
+            self.steering_weight = getattr(config_module, 'steering_weight', 1.0)
+            
+            # Control Parameters
+            self.control_hz = getattr(config_module, 'control_hz', 20.0)
+            self.lookahead_distance = getattr(config_module, 'lookahead_distance', 0.5)
+            self.enable_feedforward = getattr(config_module, 'enable_feedforward', True)
+            
+            # Safety Parameters
+            self.enable_safety_checks = getattr(config_module, 'enable_safety_checks', True)
+            self.safety_timeout = getattr(config_module, 'safety_timeout', 1.0)
+            self.emergency_brake_threshold = getattr(config_module, 'emergency_brake_threshold', 2.0)
+            
+            # ROS2 Topics
+            self.odom_topic = getattr(config_module, 'odom_topic', "/car_state/odom")
+            self.reference_topic = getattr(config_module, 'reference_topic', "/horizon_mapper/reference_trajectory")
+            self.status_topic = getattr(config_module, 'status_topic', "/horizon_mapper/path_ready")
+            self.control_topic = getattr(config_module, 'control_topic', "/drive")
+            self.pose_estimate_topic = getattr(config_module, 'pose_estimate_topic', "/initialpose")
+            
+            # Quality of Service
+            self.qos_depth = getattr(config_module, 'qos_depth', 10)
+            
+            # Logging and Debug
+            self.enable_logging = getattr(config_module, 'enable_logging', True)
+            self.debug_logging_enabled = getattr(config_module, 'debug_logging_enabled', False)
+            self.performance_logging_enabled = getattr(config_module, 'performance_logging_enabled', True)
+            self.log_frequency_divider = getattr(config_module, 'log_frequency_divider', 10)
+    
+    default_config = ConfigWrapper(config)
+        
+except ImportError as e:
+    # Fallback if config.py is not available
+    class DefaultConfig:
+        def __init__(self):
+            # Vehicle Parameters
+            self.wheelbase = 0.33
+            self.dt = 0.05
+            
+            # Control Limits
+            self.max_acceleration = 5.0
+            self.max_deceleration = 5.0
+            self.max_steering_angle = 0.5
+            self.min_speed = 0.1
+            self.max_speed = 8.0
+            
+            # LQR Cost Function Weights
+            self.position_weight = 10.0
+            self.velocity_weight = 1.0
+            self.heading_weight = 5.0
+            self.acceleration_weight = 0.1
+            self.steering_weight = 1.0
+            
+            # Control Parameters
+            self.control_hz = 20.0
+            self.lookahead_distance = 0.5
+            self.enable_feedforward = True
+            
+            # Safety Parameters
+            self.enable_safety_checks = True
+            self.safety_timeout = 1.0
+            self.emergency_brake_threshold = 2.0
+            
+            # ROS2 Topics
+            self.odom_topic = "/car_state/odom"
+            self.reference_topic = "/horizon_mapper/reference_trajectory"
+            self.status_topic = "/horizon_mapper/path_ready"
+            self.control_topic = "/drive"
+            self.pose_estimate_topic = "/initialpose"
+            
+            # Quality of Service
+            self.qos_depth = 10
+            
+            # Logging and Debug
+            self.enable_logging = True
+            self.debug_logging_enabled = False
+            self.performance_logging_enabled = True
+            self.log_frequency_divider = 10
+
+    default_config = DefaultConfig()
 
 
 class LQRNode(Node):
@@ -60,46 +190,46 @@ class LQRNode(Node):
         """Declare all ROS2 parameters with defaults."""
 
         # Vehicle parameters
-        self.declare_parameter('wheelbase', 0.33)
-        self.declare_parameter('dt', 0.05)
+        self.declare_parameter('wheelbase', default_config.wheelbase)
+        self.declare_parameter('dt', default_config.dt)
 
         # Control limits
-        self.declare_parameter('max_acceleration', 5.0)
-        self.declare_parameter('max_deceleration', 5.0)
-        self.declare_parameter('max_steering_angle', 0.5)
-        self.declare_parameter('min_speed', 0.1)
-        self.declare_parameter('max_speed', 8.0)
+        self.declare_parameter('max_acceleration', default_config.max_acceleration)
+        self.declare_parameter('max_deceleration', default_config.max_deceleration)
+        self.declare_parameter('max_steering_angle', default_config.max_steering_angle)
+        self.declare_parameter('min_speed', default_config.min_speed)
+        self.declare_parameter('max_speed', default_config.max_speed)
 
         # LQR cost function weights
-        self.declare_parameter('lqr_weights.position_weight', 10.0)
-        self.declare_parameter('lqr_weights.velocity_weight', 1.0)
-        self.declare_parameter('lqr_weights.heading_weight', 5.0)
-        self.declare_parameter('lqr_weights.acceleration_weight', 0.1)
-        self.declare_parameter('lqr_weights.steering_weight', 1.0)
+        self.declare_parameter('lqr_weights.position_weight', default_config.position_weight)
+        self.declare_parameter('lqr_weights.velocity_weight', default_config.velocity_weight)
+        self.declare_parameter('lqr_weights.heading_weight', default_config.heading_weight)
+        self.declare_parameter('lqr_weights.acceleration_weight', default_config.acceleration_weight)
+        self.declare_parameter('lqr_weights.steering_weight', default_config.steering_weight)
 
         # Control parameters
-        self.declare_parameter('control_hz', 20.0)
-        self.declare_parameter('lookahead_distance', 0.5)
-        self.declare_parameter('enable_feedforward', True)
+        self.declare_parameter('control_hz', default_config.control_hz)
+        self.declare_parameter('lookahead_distance', default_config.lookahead_distance)
+        self.declare_parameter('enable_feedforward', default_config.enable_feedforward)
 
         # Safety parameters
-        self.declare_parameter('enable_safety_checks', True)
-        self.declare_parameter('safety_timeout', 1.0)
-        self.declare_parameter('emergency_brake_threshold', 2.0)
+        self.declare_parameter('enable_safety_checks', default_config.enable_safety_checks)
+        self.declare_parameter('safety_timeout', default_config.safety_timeout)
+        self.declare_parameter('emergency_brake_threshold', default_config.emergency_brake_threshold)
 
         # Topics
-        self.declare_parameter('odom_topic', '/car_state/odom')
-        self.declare_parameter('reference_topic', '/horizon_mapper/reference_trajectory')
-        self.declare_parameter('status_topic', '/horizon_mapper/path_ready')
-        self.declare_parameter('control_topic', '/drive')
-        self.declare_parameter('pose_estimate_topic', '/initialpose')
+        self.declare_parameter('odom_topic', default_config.odom_topic)
+        self.declare_parameter('reference_topic', default_config.reference_topic)
+        self.declare_parameter('status_topic', default_config.status_topic)
+        self.declare_parameter('control_topic', default_config.control_topic)
+        self.declare_parameter('pose_estimate_topic', default_config.pose_estimate_topic)
 
         # QoS and logging
-        self.declare_parameter('qos_depth', 10)
-        self.declare_parameter('enable_logging', True)
-        self.declare_parameter('debug_logging_enabled', False)
-        self.declare_parameter('performance_logging_enabled', True)
-        self.declare_parameter('log_frequency_divider', 10)
+        self.declare_parameter('qos_depth', default_config.qos_depth)
+        self.declare_parameter('enable_logging', default_config.enable_logging)
+        self.declare_parameter('debug_logging_enabled', default_config.debug_logging_enabled)
+        self.declare_parameter('performance_logging_enabled', default_config.performance_logging_enabled)
+        self.declare_parameter('log_frequency_divider', default_config.log_frequency_divider)
 
     def _load_parameters(self):
         """Load all parameters from ROS2 parameter server."""
