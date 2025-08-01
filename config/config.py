@@ -34,7 +34,7 @@ lookahead_time = 0.8
 enable_curve_detection = True
 curve_lookahead_points = 5
 max_curvature_threshold = 1.0
-curve_speed_factor = 0.7
+curve_speed_factor = 0.55
 
 # Steering Rate Limiting (Critical for anti-wobble)
 enable_steering_rate_limit = True

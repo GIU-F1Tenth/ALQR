@@ -487,6 +487,11 @@ class LQRNode(Node):
             0.2,
             self.publish_diagnostics
         )
+        
+        self.check = self.create_timer(
+            0.5,
+            self.publish_val
+        )
 
         self.get_logger().info(f"Timers set up successfully (control: {self.control_hz}Hz)")
 
@@ -985,6 +990,9 @@ class LQRNode(Node):
         except Exception as e:
             self.get_logger().error(f"Error publishing  diagnostics: {e}")
 
+    def publish_val(self):
+
+        self.get_logger().info(f"steering Weight: {self.lqr_weights['steering_weight']:.3f}, ")
 
 def main(args=None):
     """Main entry point for the LQR controller node."""
