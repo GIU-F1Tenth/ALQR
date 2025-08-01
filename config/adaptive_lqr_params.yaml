@@ -5,12 +5,12 @@ adaptive_lqr_controller_node:
   ros__parameters:
     # Vehicle Parameters
     wheelbase: 0.33
-    dt: 0.01
+    dt: 0.02
 
     # Control Limits
-    max_acceleration: 5.0
+    max_acceleration: 2.5
     max_deceleration: 9.0
-    max_steering_angle: 0.9
+    max_steering_angle: 0.6
     min_speed: 0.1
     max_speed: 15.0
 
@@ -36,10 +36,23 @@ adaptive_lqr_controller_node:
     adaptive.poor_performance_threshold: 0.5    # Threshold for poor tracking quality
     
     # Environmental thresholds
-    adaptive.high_speed_threshold: 8.0          # High speed threshold [m/s]
-    adaptive.low_speed_threshold: 2.0           # Low speed threshold [m/s]
-    adaptive.high_curvature_threshold: 1.0      # High curvature threshold [1/m]
-    adaptive.moderate_curvature_threshold: 0.3  # Moderate curvature threshold [1/m]
+    adaptive.high_speed_threshold: 8.0
+    adaptive.low_speed_threshold: 1.2
+    adaptive.high_curvature_threshold: 1.5
+    adaptive.moderate_curvature_threshold: 0.5
+
+    # Safety Monitor Parameters
+    safety.enable_safety_monitor: true
+    safety.min_obstacle_distance: 0.3          # Minimum safe distance [m]
+    safety.emergency_brake_distance: 0.3       # Emergency brake distance [m]
+    safety.collision_check_angle: 45.0         # Angle range to check [degrees]
+    safety.max_lateral_acceleration: 3.0       # Max lateral acceleration [m/s²]
+    safety.max_angular_velocity: 2.0           # Max angular velocity [rad/s]
+    safety.wobble_time_threshold: 0.8          # Time to consider wobbling [s]
+    safety.steering_oscillation_threshold: 0.4 # Steering oscillation limit [rad]
+    safety.safety_decel_rate: 1.8              # Safety deceleration [m/s²]
+    safety.emergency_decel_rate: 6.0           # Emergency deceleration [m/s²]
+    safety.min_safe_speed: 1.4                 # Minimum safe speed [m/s]
 
     # Control Parameters
     control_hz: 30.0
@@ -60,9 +73,9 @@ adaptive_lqr_controller_node:
     curve_speed_factor: 0.7
 
     # Safety Parameters
-    enable_safety_checks: false
+    enable_safety_checks: true
     safety_timeout: 1.0
-    emergency_brake_threshold: 2.0
+    emergency_brake_threshold: 1.4
 
     # Topics
     odom_topic: "/car_state/odom"
@@ -70,6 +83,7 @@ adaptive_lqr_controller_node:
     status_topic: "/horizon_mapper/path_ready"
     control_topic: "/drive"
     pose_estimate_topic: "/initialpose"
+    lidar_topic: "/scan"
 
     # QoS and Logging
     qos_depth: 10

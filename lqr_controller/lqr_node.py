@@ -25,10 +25,13 @@ from std_msgs.msg import Bool, Float32
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from giu_f1t_interfaces.msg import VehicleStateArray
 from tf_transformations import euler_from_quaternion
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
 
 try:
     from .adaptive_lqr_controller import AdaptiveLQRController, AdaptiveParams
     from .kinematic_bicycle_model import KinematicBicycleModel
+    from .safety_monitor import SafetyMonitor, SafetyParams
 except ImportError:
     # Fallback for standalone execution
     import sys
@@ -37,6 +40,7 @@ except ImportError:
     sys.path.append(current_dir)
     from adaptive_lqr_controller import AdaptiveLQRController, AdaptiveParams
     from kinematic_bicycle_model import KinematicBicycleModel
+    from safety_monitor import SafetyMonitor, SafetyParams
 
 # Import configuration defaults
 try:
@@ -58,13 +62,14 @@ class AdaptiveLQRNode(Node):
         self._declare_parameters()
         self._load_parameters()
         self._initialize_adaptive_controller()
+        self._initialize_safety_monitor()
         self._initialize_enhanced_controllers()
         self._initialize_state()
         self._setup_subscriptions()
         self._setup_publishers()
         self._setup_timers()
 
-        self.get_logger().info("🚀 Fully Adaptive LQR Controller Node has been started!")
+        self.get_logger().info("🚀 Fully Adaptive LQR Controller Node with Safety Monitor started!")
 
     def _declare_parameters(self):
         """Declare all ROS2 parameters including adaptive parameters."""
@@ -125,12 +130,26 @@ class AdaptiveLQRNode(Node):
         self.declare_parameter('safety_timeout', 1.0)
         self.declare_parameter('emergency_brake_threshold', 2.0)
         
+        # Safety Monitor Parameters
+        self.declare_parameter('safety.enable_safety_monitor', True)
+        self.declare_parameter('safety.min_obstacle_distance', 1.5)
+        self.declare_parameter('safety.emergency_brake_distance', 0.8)
+        self.declare_parameter('safety.collision_check_angle', 60.0)
+        self.declare_parameter('safety.max_lateral_acceleration', 3.0)
+        self.declare_parameter('safety.max_angular_velocity', 2.0)
+        self.declare_parameter('safety.wobble_time_threshold', 1.0)
+        self.declare_parameter('safety.steering_oscillation_threshold', 0.3)
+        self.declare_parameter('safety.safety_decel_rate', 2.0)
+        self.declare_parameter('safety.emergency_decel_rate', 5.0)
+        self.declare_parameter('safety.min_safe_speed', 1.0)
+        
         # Topics
         self.declare_parameter('odom_topic', '/car_state/odom')
         self.declare_parameter('reference_topic', '/horizon_mapper/reference_trajectory')
         self.declare_parameter('status_topic', '/horizon_mapper/path_ready')
         self.declare_parameter('control_topic', '/drive')
         self.declare_parameter('pose_estimate_topic', '/initialpose')
+        self.declare_parameter('lidar_topic', '/scan')
         
         # QoS and Logging
         self.declare_parameter('qos_depth', 10)
@@ -199,12 +218,28 @@ class AdaptiveLQRNode(Node):
         self.safety_timeout = self.get_parameter('safety_timeout').value
         self.emergency_brake_threshold = self.get_parameter('emergency_brake_threshold').value
         
+        # Load safety monitor parameters
+        self.enable_safety_monitor = self.get_parameter('safety.enable_safety_monitor').value
+        self.safety_params = SafetyParams(
+            min_obstacle_distance=self.get_parameter('safety.min_obstacle_distance').value,
+            emergency_brake_distance=self.get_parameter('safety.emergency_brake_distance').value,
+            collision_check_angle=self.get_parameter('safety.collision_check_angle').value,
+            max_lateral_acceleration=self.get_parameter('safety.max_lateral_acceleration').value,
+            max_angular_velocity=self.get_parameter('safety.max_angular_velocity').value,
+            wobble_time_threshold=self.get_parameter('safety.wobble_time_threshold').value,
+            steering_oscillation_threshold=self.get_parameter('safety.steering_oscillation_threshold').value,
+            safety_decel_rate=self.get_parameter('safety.safety_decel_rate').value,
+            emergency_decel_rate=self.get_parameter('safety.emergency_decel_rate').value,
+            min_safe_speed=self.get_parameter('safety.min_safe_speed').value
+        )
+        
         # Topics
         self.odom_topic = self.get_parameter('odom_topic').value
         self.reference_topic = self.get_parameter('reference_topic').value
         self.status_topic = self.get_parameter('status_topic').value
         self.control_topic = self.get_parameter('control_topic').value
         self.pose_estimate_topic = self.get_parameter('pose_estimate_topic').value
+        self.lidar_topic = self.get_parameter('lidar_topic').value
         
         # QoS and Logging
         self.qos_depth = self.get_parameter('qos_depth').value
@@ -242,6 +277,30 @@ class AdaptiveLQRNode(Node):
         except Exception as e:
             self.get_logger().error(f"❌ Failed to initialize adaptive LQR controller: {e}")
             raise e
+
+    def _initialize_safety_monitor(self):
+        """Initialize the safety monitoring system."""
+        
+        if self.enable_safety_monitor:
+            try:
+                self.safety_monitor = SafetyMonitor(
+                    safety_params=self.safety_params,
+                    enable_logging=self.enable_logging,
+                    logger=self.get_logger()
+                )
+                
+                self.get_logger().info("✅ Safety Monitor initialized")
+                self.get_logger().info(f"   - Collision avoidance: min_dist={self.safety_params.min_obstacle_distance}m")
+                self.get_logger().info(f"   - Wobble detection: max_angular_vel={self.safety_params.max_angular_velocity} rad/s")
+                self.get_logger().info(f"   - Emergency brake distance: {self.safety_params.emergency_brake_distance}m")
+                
+            except Exception as e:
+                self.get_logger().error(f"❌ Failed to initialize safety monitor: {e}")
+                self.enable_safety_monitor = False
+                self.safety_monitor = None
+        else:
+            self.safety_monitor = None
+            self.get_logger().info("⚠️  Safety Monitor disabled")
 
     def _initialize_enhanced_controllers(self):
         """Initialize enhanced control components."""
@@ -297,6 +356,9 @@ class AdaptiveLQRNode(Node):
         self.current_lookahead_distance = self.lookahead_distance
         self.target_velocity = 0.0
         
+        # Safety state
+        self.last_control_command = np.zeros(2)
+        
         self.get_logger().info("Enhanced node state initialized with anti-wobble features")
 
     def _setup_subscriptions(self):
@@ -348,6 +410,16 @@ class AdaptiveLQRNode(Node):
             self.pose_estimate_callback,
             reliable_qos
         )
+        
+        # Lidar subscription for safety monitoring
+        if self.enable_safety_monitor:
+            self.lidar_subscription = self.create_subscription(
+                LaserScan,
+                self.lidar_topic,
+                self.lidar_callback,
+                sensor_qos
+            )
+            self.get_logger().info(f"✅ Subscribed to lidar topic: {self.lidar_topic}")
         
         self.get_logger().info("Subscriptions set up successfully")
 
@@ -408,6 +480,17 @@ class AdaptiveLQRNode(Node):
         self.diagnostics_timer = self.create_timer(1.0, self.publish_diagnostics)
         
         self.get_logger().info(f"Timers set up successfully (control: {self.control_hz}Hz)")
+
+    def lidar_callback(self, msg: LaserScan):
+        """Handle lidar scan messages for safety monitoring."""
+        
+        try:
+            if self.safety_monitor:
+                self.safety_monitor.update_lidar(msg)
+                
+        except Exception as e:
+            if self.debug_logging_enabled:
+                self.get_logger().warning(f"Error processing lidar data: {e}")
 
     def odom_callback(self, msg: Odometry):
         """Handle odometry messages."""
@@ -593,7 +676,7 @@ class AdaptiveLQRNode(Node):
         return closest_index
 
     def control_callback(self):
-        """Enhanced adaptive control loop."""
+        """Enhanced adaptive control loop with safety monitoring."""
         
         start_time = time.time()
         self.control_iteration_count += 1
@@ -612,6 +695,14 @@ class AdaptiveLQRNode(Node):
                 self.get_logger().warning("Invalid current state, stopping")
                 self.publish_emergency_stop()
                 return
+
+            # Update safety monitor with current vehicle state
+            if self.safety_monitor:
+                self.safety_monitor.update_vehicle_state(
+                    steering_angle=self.last_control_command[1],
+                    angular_velocity=self.current_angular_velocity,
+                    velocity=self.current_velocity
+                )
 
             # Get enhanced reference state with curve analysis
             reference_state, analysis_info = self.get_enhanced_reference_state(current_state)
@@ -635,18 +726,34 @@ class AdaptiveLQRNode(Node):
             if self.steering_rate_limiter is not None:
                 control[1] = self.steering_rate_limiter.limit_steering_rate(control[1])
 
+            # Apply safety adjustments
+            if self.safety_monitor:
+                control = self.safety_monitor.get_safety_control_adjustment(
+                    control, self.current_velocity
+                )
+                
+                # Check for emergency stop
+                safety_status = self.safety_monitor.get_safety_status()
+                if safety_status['emergency_stop_required']:
+                    self.publish_emergency_stop()
+                    return
+
             # Validate control output
             if not self.kinematic_model.validate_control(control, self.max_acceleration, self.max_steering_angle):
                 self.get_logger().warning("Invalid control output, stopping")
                 self.publish_emergency_stop()
                 return
 
+            # Store last control command for safety monitoring
+            self.last_control_command = control.copy()
+
             # Publish control command
             self.publish_control_command(control)
 
-            # Publish enhanced diagnostics including adaptation info
+            # Publish enhanced diagnostics including adaptation and safety info
             self.publish_enhanced_debug_info(analysis_info)
             self.publish_adaptation_status()
+            self.publish_safety_status()
 
             # Track performance
             if self.performance_logging_enabled:
@@ -661,13 +768,19 @@ class AdaptiveLQRNode(Node):
             self.last_successful_solve_time = time.time()
             self.control_active = True
 
-            # Enhanced debug logging with adaptation info
+            # Enhanced debug logging with adaptation and safety info
             if (self.debug_logging_enabled and
                     self.control_iteration_count % (self.log_frequency_divider * 2) == 0):
                 
                 adaptation_info = self.lqr_controller.get_adaptation_info()
                 current_weights = adaptation_info['current_weights']
                 performance_metrics = adaptation_info['performance_metrics']
+                
+                safety_info = ""
+                if self.safety_monitor:
+                    safety_status = self.safety_monitor.get_safety_status()
+                    safety_info = f", safety=[active:{safety_status['safety_active']}, " \
+                                f"obstacle:{safety_status['min_obstacle_distance']:.2f}m]"
                 
                 self.get_logger().info(
                     f"Adaptive Control #{self.control_iteration_count}: "
@@ -676,6 +789,7 @@ class AdaptiveLQRNode(Node):
                     f"steer:{current_weights['steering']:.2f}], "
                     f"quality={performance_metrics.get('tracking_quality', 0.0):.3f}, "
                     f"control=[a:{control[0]:.3f}, δ:{control[1]:.3f}]"
+                    f"{safety_info}"
                 )
 
         except Exception as e:
@@ -723,6 +837,46 @@ class AdaptiveLQRNode(Node):
                 
         except Exception as e:
             self.get_logger().error(f"Failed to publish emergency stop: {e}")
+
+    def publish_safety_status(self):
+        """Publish safety monitoring status."""
+        
+        try:
+            if not self.safety_monitor:
+                return
+                
+            safety_status = self.safety_monitor.get_safety_status()
+            
+            # Publish as diagnostic message
+            diag_msg = DiagnosticArray()
+            diag_msg.header.stamp = self.get_clock().now().to_msg()
+            
+            safety_diag = DiagnosticStatus()
+            safety_diag.name = "adaptive_lqr_safety_monitor"
+            safety_diag.hardware_id = "safety_monitor"
+            
+            if safety_status['emergency_stop_required']:
+                safety_diag.level = DiagnosticStatus.ERROR
+                safety_diag.message = "Emergency stop required"
+            elif safety_status['safety_active']:
+                safety_diag.level = DiagnosticStatus.WARN
+                safety_diag.message = "Safety intervention active"
+            else:
+                safety_diag.level = DiagnosticStatus.OK
+                safety_diag.message = "Safety monitoring normal"
+            
+            # Add safety metrics
+            for key, value in safety_status.items():
+                safety_diag.values.append(
+                    KeyValue(key=f"safety_{key}", value=str(value))
+                )
+            
+            diag_msg.status.append(safety_diag)
+            self.diagnostics_publisher.publish(diag_msg)
+            
+        except Exception as e:
+            if self.debug_logging_enabled:
+                self.get_logger().warning(f"Failed to publish safety status: {e}")
 
     def publish_adaptation_status(self):
         """Publish current adaptation status and metrics."""
@@ -858,6 +1012,27 @@ class AdaptiveLQRNode(Node):
                 controller_status.values.append(
                     KeyValue(key="adaptation_error", value=str(e))
                 )
+            
+            # Add safety monitor status
+            if self.safety_monitor:
+                try:
+                    safety_status = self.safety_monitor.get_safety_status()
+                    controller_status.values.append(
+                        KeyValue(key="safety_active", value=str(safety_status['safety_active']))
+                    )
+                    controller_status.values.append(
+                        KeyValue(key="min_obstacle_distance", value=f"{safety_status['min_obstacle_distance']:.2f}")
+                    )
+                    controller_status.values.append(
+                        KeyValue(key="wobbling_detected", value=str(safety_status['wobbling_detected']))
+                    )
+                    controller_status.values.append(
+                        KeyValue(key="safety_interventions", value=str(safety_status['safety_interventions']))
+                    )
+                except Exception as e:
+                    controller_status.values.append(
+                        KeyValue(key="safety_error", value=str(e))
+                    )
             
             diag_msg.status.append(controller_status)
             self.diagnostics_publisher.publish(diag_msg)
