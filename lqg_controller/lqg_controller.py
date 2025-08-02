@@ -22,7 +22,7 @@ from typing import Tuple, Optional, Dict, Any
 import time
 
 from .kalman_filter import ExtendedKalmanFilter
-from .adaptive_lqr_controller import AdaptiveLQRController
+from .adaptive_lqr_controller import AdaptiveLQRController, AdaptiveParams
 
 
 class LQGController:
@@ -97,11 +97,19 @@ class LQGController:
         )
 
         # Initialize LQR controller for optimal control computation
+        # Convert Q and R matrices to adaptive parameters
+        adaptive_params = AdaptiveParams(
+            base_position_weight=float(Q[0, 0]) if Q is not None else 10.0,
+            base_velocity_weight=float(Q[2, 2]) if Q is not None else 1.0,
+            base_heading_weight=float(Q[3, 3]) if Q is not None else 5.0,
+            base_acceleration_weight=float(R[0, 0]) if R is not None else 0.1,
+            base_steering_weight=float(R[1, 1]) if R is not None else 1.0
+        )
+        
         self.lqr = AdaptiveLQRController(
             wheelbase=wheelbase,
             dt=dt,
-            Q=Q,
-            R=R,
+            adaptive_params=adaptive_params,
             max_acceleration=max_acceleration,
             max_steering=max_steering,
             enable_logging=enable_logging,
