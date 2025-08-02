@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 """
-Launch file for LQR Controller
+Launch file for LQG Controller
 
-This launch file starts the LQR controller node with configurable parameters.
+This launch file starts the LQG controller node with configurable parameters.
 
 Author: Mohammed Azab <mohammed@azab.io>
 License: MIT
@@ -15,25 +15,24 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
-    """Generate launch description for LQR controller."""
+    """Generate launch description for LQG controller."""
 
     # Package directory
     pkg_share = FindPackageShare('lqg_controller')
 
     # Default config file path
     default_config_file = PathJoinSubstitution([
-        pkg_share, 'config', 'lqr_params.yaml'
+        pkg_share, 'config', 'lqg_params.yaml'
     ])
 
     # Launch arguments
     config_file_arg = DeclareLaunchArgument(
         'config_file',
         default_value=default_config_file,
-        description='Path to LQR controller configuration file'
+        description='Path to LQG controller configuration file'
     )
 
     debug_arg = DeclareLaunchArgument(
@@ -48,11 +47,11 @@ def generate_launch_description():
         description='Use simulation time'
     )
 
-    # LQR controller node
-    lqr_controller_node = Node(
+    # LQG controller node
+    lqg_controller_node = Node(
         package='lqg_controller',
-        executable='lqr_node',
-        name='lqr_controller_node',
+        executable='lqg_node',
+        name='lqg_controller_node',
         parameters=[
             LaunchConfiguration('config_file'),
             {
@@ -70,5 +69,5 @@ def generate_launch_description():
         config_file_arg,
         debug_arg,
         use_sim_time_arg,
-        lqr_controller_node
+        lqg_controller_node
     ])
