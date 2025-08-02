@@ -10,7 +10,7 @@ License: MIT
 """
 
 from lqr_controller.lqr_controller import LQRController
-from lqr_controller.kinematic_bicycle_model import KinematicBicycleModel
+from lqg_controller.kinematic_bicycle_model import KinematicBicycleModel
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
