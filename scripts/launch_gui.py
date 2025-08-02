@@ -50,17 +50,8 @@ def test_dependencies():
         missing_deps.append("matplotlib")
         print("✗ matplotlib not available")
     
-    # Test config
-    try:
-        import importlib.util
-        config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.py')
-        spec = importlib.util.spec_from_file_location("lqr_config", config_path)
-        config = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(config)
-        print("✓ config module available")
-    except Exception as e:
-        print(f"✗ config module issue: {e}")
-        # Config is not critical, so don't add to missing_deps
+    # No longer checking config.py since it's been removed
+    print("✓ Using YAML configuration files instead of config.py")
     
     if missing_deps:
         print(f"\n✗ Missing dependencies: {', '.join(missing_deps)}")

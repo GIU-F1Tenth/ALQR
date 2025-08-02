@@ -1,65 +1,93 @@
-# LQR Controller Configuration
-# Linear Quadratic Regulator parameters for F1TENTH trajectory tracking
+# Fully Adaptive LQR Controller Configuration
+# Parameters for real-time adaptive Linear Quadratic Regulator
 
-lqr_controller_node:
+adaptive_lqr_controller_node:
   ros__parameters:
     # Vehicle Parameters
-    wheelbase: 0.33 
-    dt: 0.05 
+    wheelbase: 0.33
+    dt: 0.02
 
     # Control Limits
-    max_acceleration: 5.0 
-    max_deceleration: 9.0 
-    max_steering_angle: 0.9 
-    min_speed: 0.1 
+    max_acceleration: 2.5
+    max_deceleration: 9.0
+    max_steering_angle: 0.6
+    min_speed: 0.1
     max_speed: 15.0
 
-    # LQR Cost Function Weights
-    # Higher weights penalize deviations more heavily
-    lqr_weights:
-      position_weight: 5.0 
-      velocity_weight: 1.0 
-      heading_weight: 6.0
-      acceleration_weight: 0.3 
-      steering_weight: 4.0 
+    # Base LQR Weights (starting points for adaptation)
+    adaptive.base_position_weight: 3.0
+    adaptive.base_velocity_weight: 1.0
+    adaptive.base_heading_weight: 6.4
+    adaptive.base_acceleration_weight: 0.3
+    adaptive.base_steering_weight: 4.3
+      
+    # Adaptation Parameters
+    adaptive.velocity_adaptation_factor: 0.5    # How much velocity affects adaptation
+    adaptive.curvature_adaptation_factor: 3.0   # How much curvature affects adaptation
+    adaptive.error_adaptation_factor: 1.5       # How much tracking error affects adaptation
+    adaptive.performance_adaptation_factor: 0.3 # How much performance history affects adaptation
+    
+    adaptive.min_weight_multiplier: 0.2         # Minimum weight scaling factor
+    adaptive.max_weight_multiplier: 5.0         # Maximum weight scaling factor
+    adaptive.adaptation_rate: 0.1               # Rate of parameter adaptation (0-1)
+    
+    # Performance thresholds
+    adaptive.good_performance_threshold: 0.1    # Threshold for good tracking quality
+    adaptive.poor_performance_threshold: 0.5    # Threshold for poor tracking quality
+    
+    # Environmental thresholds
+    adaptive.high_speed_threshold: 8.0
+    adaptive.low_speed_threshold: 1.2
+    adaptive.high_curvature_threshold: 1.5
+    adaptive.moderate_curvature_threshold: 0.5
+
+    # Safety Monitor Parameters
+    safety.enable_safety_monitor: true
+    safety.min_obstacle_distance: 0.3          # Minimum safe distance [m]
+    safety.emergency_brake_distance: 0.3       # Emergency brake distance [m]
+    safety.collision_check_angle: 45.0         # Angle range to check [degrees]
+    safety.max_lateral_acceleration: 3.0       # Max lateral acceleration [m/s²]
+    safety.max_angular_velocity: 2.0           # Max angular velocity [rad/s]
+    safety.wobble_time_threshold: 0.8          # Time to consider wobbling [s]
+    safety.steering_oscillation_threshold: 0.4 # Steering oscillation limit [rad]
+    safety.safety_decel_rate: 1.8              # Safety deceleration [m/s²]
+    safety.emergency_decel_rate: 6.0           # Emergency deceleration [m/s²]
+    safety.min_safe_speed: 1.4                 # Minimum safe speed [m/s]
 
     # Control Parameters
-    control_hz: 20.0 # Control loop frequency [Hz]
-    lookahead_distance: 1.5 # Lookahead distance for reference point [m]
-    enable_feedforward: true # Enable feedforward control from reference
+    control_hz: 30.0
+    lookahead_distance: 1.3
+    enable_feedforward: true
 
-    # Enhanced Anti-Wobble Parameters
+    # Anti-Wobble Parameters
     min_lookahead_distance: 0.7
-    max_lookahead_distance: 2.5 
-    lookahead_time: 0.8 
+    max_lookahead_distance: 2.5
+    lookahead_time: 0.8
+    enable_steering_rate_limit: true
+    max_steering_rate: 1.2
 
-    # Curve Detection and Handling
+    # Curve Detection
     enable_curve_detection: true
-    curve_lookahead_points: 10 
-    max_curvature_threshold: 1.0 
-    curve_speed_factor: 0.7 
-
-    # Steering Rate Limiting (Critical for anti-wobble)
-    enable_steering_rate_limit: true 
-    max_steering_rate: 1.5 
+    curve_lookahead_points: 5
+    max_curvature_threshold: 1.0
+    curve_speed_factor: 0.7
 
     # Safety Parameters
-    enable_safety_checks: false 
-    safety_timeout: 1.0 # Timeout for data freshness [s]
-    emergency_brake_threshold: 9.0 # Emergency brake acceleration [m/s²]
+    enable_safety_checks: true
+    safety_timeout: 1.0
+    emergency_brake_threshold: 1.4
 
-    # ROS2 Topics
+    # Topics
     odom_topic: "/car_state/odom"
     reference_topic: "/horizon_mapper/reference_trajectory"
     status_topic: "/horizon_mapper/path_ready"
     control_topic: "/drive"
     pose_estimate_topic: "/initialpose"
+    lidar_topic: "/scan"
 
-    # Quality of Service
-    qos_depth: 10 
-
-    # Logging and Debug
+    # QoS and Logging
+    qos_depth: 10
     enable_logging: true
-    debug_logging_enabled: false 
-    performance_logging_enabled: true 
+    debug_logging_enabled: false
+    performance_logging_enabled: true
     log_frequency_divider: 10

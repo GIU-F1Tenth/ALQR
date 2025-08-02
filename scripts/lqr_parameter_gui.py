@@ -39,35 +39,20 @@ except ImportError:
     ROS2_AVAILABLE = False
 
 
-# Import config for default values
-def _load_config():
-    """Load configuration module safely."""
-    try:
-        import importlib.util
-        # Try multiple possible config locations
-        possible_paths = [
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config.py'),
-            os.path.join(os.path.dirname(__file__), '..', 'config', 'config.py'),
-            './config/config.py',
-            '../config/config.py'
-        ]
-        
-        for config_path in possible_paths:
-            if os.path.exists(config_path):
-                spec = importlib.util.spec_from_file_location("lqr_config", config_path)
-                config_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(config_module)
-                print(f"✅ Config loaded from: {config_path}")
-                return config_module
-                
-        print("⚠️  Config file not found, using defaults")
-        return None
-    except Exception as e:
-        print(f"⚠️  Config load error: {e}")
-        return None
-
-config = _load_config()
-CONFIG_AVAILABLE = config is not None
+# Default configuration values (no config.py dependency)
+DEFAULT_CONFIG = {
+    'POSITION_WEIGHT': 3.0,
+    'VELOCITY_WEIGHT': 1.0,
+    'HEADING_WEIGHT': 6.4,
+    'ACCELERATION_WEIGHT': 0.5,
+    'STEERING_WEIGHT': 4.3,
+    'ACCEL_WEIGHT': 1.0,
+    'STEER_WEIGHT': 1.0,
+    'WHEELBASE': 0.33,
+    'MAX_SPEED': 7.0,
+    'MAX_ACCELERATION': 9.51,
+    'MAX_STEERING': 0.4189
+}
 
 class LQRParameterGUI:
     """Main GUI class for LQR parameter tuning."""
@@ -108,62 +93,7 @@ class LQRParameterGUI:
         self.update_thread.start()
     
     def _load_default_parameters(self) -> Dict[str, Any]:
-        """Load default parameters from config or use hardcoded values."""
-        if CONFIG_AVAILABLE:
-            try:
-                return {
-                    # Vehicle Parameters
-                    'wheelbase': getattr(config, 'wheelbase', 0.33),
-                    'dt': getattr(config, 'dt', 0.05),
-                    
-                    # Control Limits
-                    'max_acceleration': getattr(config, 'max_acceleration', 5.0),
-                    'max_deceleration': getattr(config, 'max_deceleration', 9.0),
-                    'max_steering_angle': getattr(config, 'max_steering_angle', 0.9),
-                    'min_speed': getattr(config, 'min_speed', 0.1),
-                    'max_speed': getattr(config, 'max_speed', 15.0),
-                    
-                    # LQR Q Matrix Weights (State Cost)
-                    'q_position_x': getattr(config, 'position_weight', 5.0),
-                    'q_position_y': getattr(config, 'position_weight', 5.0),
-                    'q_velocity': getattr(config, 'velocity_weight', 1.0),
-                    'q_heading': getattr(config, 'heading_weight', 6.0),
-                    
-                    # LQR R Matrix Weights (Control Cost)
-                    'r_acceleration': getattr(config, 'acceleration_weight', 0.3),
-                    'r_steering': getattr(config, 'steering_weight', 4.0),
-                    
-                    # Control Parameters
-                    'control_hz': getattr(config, 'control_hz', 20.0),
-                    'lookahead_distance': getattr(config, 'lookahead_distance', 1.5),
-                    'enable_feedforward': getattr(config, 'enable_feedforward', True),
-                    
-                    # Anti-Wobble Parameters
-                    'min_lookahead_distance': getattr(config, 'min_lookahead_distance', 0.7),
-                    'max_lookahead_distance': getattr(config, 'max_lookahead_distance', 2.5),
-                    'lookahead_time': getattr(config, 'lookahead_time', 0.8),
-                    'enable_steering_rate_limit': getattr(config, 'enable_steering_rate_limit', True),
-                    'max_steering_rate': getattr(config, 'max_steering_rate', 1.5),
-                    
-                    # Curve Detection
-                    'enable_curve_detection': getattr(config, 'enable_curve_detection', True),
-                    'curve_lookahead_points': getattr(config, 'curve_lookahead_points', 5),
-                    'max_curvature_threshold': getattr(config, 'max_curvature_threshold', 1.0),
-                    'curve_speed_factor': getattr(config, 'curve_speed_factor', 0.7),
-                    
-                    # Safety Parameters
-                    'enable_safety_checks': getattr(config, 'enable_safety_checks', False),
-                    'safety_timeout': getattr(config, 'safety_timeout', 1.0),
-                    'emergency_brake_threshold': getattr(config, 'emergency_brake_threshold', 2.0),
-                }
-            except Exception as e:
-                print(f"Error loading config attributes: {e}")
-                return self._get_hardcoded_defaults()
-        else:
-            return self._get_hardcoded_defaults()
-    
-    def _get_hardcoded_defaults(self) -> Dict[str, Any]:
-        """Get hardcoded default parameters."""
+        """Load default parameters using hardcoded values (no config.py dependency)."""
         return {
             # Vehicle Parameters
             'wheelbase': 0.33,

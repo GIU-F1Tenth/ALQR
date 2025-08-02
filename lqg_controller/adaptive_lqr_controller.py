@@ -20,7 +20,12 @@ from typing import Tuple, Optional, Dict, Any, List
 import scipy.linalg
 import time
 from dataclasses import dataclass
-from .kinematic_bicycle_model import KinematicBicycleModel
+
+try:
+    from .kinematic_bicycle_model import KinematicBicycleModel
+except ImportError:
+    # Fallback for standalone execution
+    from kinematic_bicycle_model import KinematicBicycleModel
 
 
 @dataclass
@@ -54,183 +59,6 @@ class AdaptiveParams:
     high_curvature_threshold: float = 1.0
     moderate_curvature_threshold: float = 0.3
 
-
-class PerformanceMonitor:
-    """Monitor and analyze controller performance for adaptive tuning."""
-    
-    def __init__(self, history_size: int = 100):
-        self.history_size = history_size
-        
-        # Performance metrics history
-        self.lateral_errors = []
-        self.heading_errors = []
-        self.velocity_errors = []
-        self.control_efforts = []
-        self.solve_times = []
-        
-        # Sliding window statistics
-        self.avg_lateral_error = 0.0
-        self.avg_heading_error = 0.0
-        self.avg_velocity_error = 0.0
-        self.avg_control_effort = 0.0
-        self.tracking_quality = 1.0
-        
-        # Performance trends
-        self.error_trend = 0.0  # Positive = getting worse, Negative = improving
-        self.stability_metric = 1.0
-        
-    def update(self, lateral_error: float, heading_error: float, 
-               velocity_error: float, control: np.ndarray, solve_time: float):
-        """Update performance metrics with new data."""
-        
-        # Add new measurements
-        self.lateral_errors.append(abs(lateral_error))
-        self.heading_errors.append(abs(heading_error))
-        self.velocity_errors.append(abs(velocity_error))
-        self.control_efforts.append(np.linalg.norm(control))
-        self.solve_times.append(solve_time)
-        
-        # Maintain sliding window
-        for metric_list in [self.lateral_errors, self.heading_errors, 
-                           self.velocity_errors, self.control_efforts, self.solve_times]:
-            if len(metric_list) > self.history_size:
-                metric_list.pop(0)
-        
-        # Update statistics
-        self._update_statistics()
-        self._update_trends()
-    
-    def _update_statistics(self):
-        """Update sliding window statistics."""
-        if len(self.lateral_errors) > 5:
-            self.avg_lateral_error = np.mean(self.lateral_errors[-20:])
-            self.avg_heading_error = np.mean(self.heading_errors[-20:])
-            self.avg_velocity_error = np.mean(self.velocity_errors[-20:])
-            self.avg_control_effort = np.mean(self.control_efforts[-20:])
-            
-            # Compute overall tracking quality (lower is better)
-            self.tracking_quality = (self.avg_lateral_error + 
-                                   0.5 * self.avg_heading_error + 
-                                   0.2 * self.avg_velocity_error)
-    
-    def _update_trends(self):
-        """Update performance trend analysis."""
-        if len(self.lateral_errors) > 20:
-            # Compute error trend over recent history
-            recent_errors = self.lateral_errors[-20:]
-            old_errors = self.lateral_errors[-40:-20] if len(self.lateral_errors) >= 40 else recent_errors
-            
-            recent_avg = np.mean(recent_errors)
-            old_avg = np.mean(old_errors)
-            
-            self.error_trend = (recent_avg - old_avg) / max(old_avg, 0.01)
-            
-            # Compute stability metric (lower variance = more stable)
-            self.stability_metric = 1.0 / (1.0 + np.var(recent_errors))
-    
-    def get_performance_metrics(self) -> Dict[str, float]:
-        """Get current performance metrics."""
-        return {
-            'tracking_quality': self.tracking_quality,
-            'error_trend': self.error_trend,
-            'stability_metric': self.stability_metric,
-            'avg_lateral_error': self.avg_lateral_error,
-            'avg_heading_error': self.avg_heading_error,
-            'avg_control_effort': self.avg_control_effort
-        }
-
-
-class TrajectoryAnalyzer:
-    """Analyze trajectory characteristics for adaptive parameter tuning."""
-    
-    def __init__(self):
-        self.complexity_history = []
-        self.curvature_history = []
-        self.velocity_profile_history = []
-        
-    def analyze_trajectory_segment(self, trajectory: List[Dict], 
-                                 current_index: int, lookahead_points: int = 10) -> Dict[str, float]:
-        """Analyze upcoming trajectory segment characteristics."""
-        
-        if not trajectory or len(trajectory) < 3:
-            return {
-                'curvature': 0.0,
-                'complexity': 0.0,
-                'velocity_variation': 0.0,
-                'acceleration_demand': 0.0
-            }
-        
-        end_index = min(current_index + lookahead_points, len(trajectory))
-        segment = trajectory[current_index:end_index]
-        
-        # Analyze curvature
-        curvatures = self._compute_curvatures(segment)
-        max_curvature = max(curvatures) if curvatures else 0.0
-        avg_curvature = np.mean(curvatures) if curvatures else 0.0
-        
-        # Analyze velocity profile
-        velocities = [point['v'] for point in segment]
-        velocity_variation = np.std(velocities) if len(velocities) > 1 else 0.0
-        
-        # Analyze acceleration demands
-        accelerations = []
-        for i in range(1, len(segment)):
-            dt = 0.1  # Assume constant time step
-            dv = segment[i]['v'] - segment[i-1]['v']
-            accelerations.append(abs(dv / dt))
-        
-        acceleration_demand = max(accelerations) if accelerations else 0.0
-        
-        # Compute trajectory complexity
-        complexity = self._compute_trajectory_complexity(segment)
-        
-        return {
-            'curvature': max_curvature,
-            'avg_curvature': avg_curvature,
-            'complexity': complexity,
-            'velocity_variation': velocity_variation,
-            'acceleration_demand': acceleration_demand
-        }
-    
-    def _compute_curvatures(self, segment: List[Dict]) -> List[float]:
-        """Compute curvature for trajectory segment."""
-        curvatures = []
-        
-        for i in range(1, len(segment) - 1):
-            p1 = np.array([segment[i-1]['x'], segment[i-1]['y']])
-            p2 = np.array([segment[i]['x'], segment[i]['y']])
-            p3 = np.array([segment[i+1]['x'], segment[i+1]['y']])
-            
-            # Three-point curvature formula
-            a = np.linalg.norm(p2 - p1)
-            b = np.linalg.norm(p3 - p2)
-            c = np.linalg.norm(p3 - p1)
-            
-            if a > 1e-6 and b > 1e-6 and c > 1e-6:
-                area = 0.5 * abs(np.cross(p2 - p1, p3 - p1))
-                curvature = 2 * area / (a * b * c)
-                curvatures.append(curvature)
-        
-        return curvatures
-    
-    def _compute_trajectory_complexity(self, segment: List[Dict]) -> float:
-        """Compute trajectory complexity metric."""
-        if len(segment) < 3:
-            return 0.0
-        
-        # Compute heading changes
-        heading_changes = []
-        for i in range(1, len(segment)):
-            dtheta = abs(segment[i]['theta'] - segment[i-1]['theta'])
-            # Handle angle wrapping
-            if dtheta > np.pi:
-                dtheta = 2 * np.pi - dtheta
-            heading_changes.append(dtheta)
-        
-        # Complexity is based on total heading variation
-        complexity = sum(heading_changes) / len(heading_changes) if heading_changes else 0.0
-        
-        return complexity
 
 
 class AdaptiveLQRController:
@@ -746,3 +574,205 @@ class AdaptiveLQRController:
         self.adaptation_history.clear()
         
         self.log_info("Adaptive parameters reset to base values")
+
+
+def main(args=None):
+    """Main entry point for standalone adaptive LQR controller execution."""
+    import rclpy
+    rclpy.init(args=args)
+    
+    try:
+        # For standalone execution, this would typically be integrated
+        # with the main LQR node. This main function is provided for
+        # testing and development purposes.
+        print("Adaptive LQR Controller module loaded successfully.")
+        print("This controller is designed to be used within the main LQR node.")
+        print("Please use 'ros2 launch lqr_controller adaptive_lqr_controller.launch.py'")
+        
+    except KeyboardInterrupt:
+        pass
+    finally:
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+
+
+# Safety and Performance Monitor
+class PerformanceMonitor:
+    """Monitor and analyze controller performance for adaptive tuning."""
+    
+    def __init__(self, history_size: int = 100):
+        self.history_size = history_size
+        
+        # Performance metrics history
+        self.lateral_errors = []
+        self.heading_errors = []
+        self.velocity_errors = []
+        self.control_efforts = []
+        self.solve_times = []
+        
+        # Sliding window statistics
+        self.avg_lateral_error = 0.0
+        self.avg_heading_error = 0.0
+        self.avg_velocity_error = 0.0
+        self.avg_control_effort = 0.0
+        self.tracking_quality = 1.0
+        
+        # Performance trends
+        self.error_trend = 0.0  # Positive = getting worse, Negative = improving
+        self.stability_metric = 1.0
+        
+    def update(self, lateral_error: float, heading_error: float, 
+               velocity_error: float, control: np.ndarray, solve_time: float):
+        """Update performance metrics with new data."""
+        
+        # Add new measurements
+        self.lateral_errors.append(abs(lateral_error))
+        self.heading_errors.append(abs(heading_error))
+        self.velocity_errors.append(abs(velocity_error))
+        self.control_efforts.append(np.linalg.norm(control))
+        self.solve_times.append(solve_time)
+        
+        # Maintain sliding window
+        for metric_list in [self.lateral_errors, self.heading_errors, 
+                           self.velocity_errors, self.control_efforts, self.solve_times]:
+            if len(metric_list) > self.history_size:
+                metric_list.pop(0)
+        
+        # Update statistics
+        self._update_statistics()
+        self._update_trends()
+    
+    def _update_statistics(self):
+        """Update sliding window statistics."""
+        if len(self.lateral_errors) > 5:
+            self.avg_lateral_error = np.mean(self.lateral_errors[-20:])
+            self.avg_heading_error = np.mean(self.heading_errors[-20:])
+            self.avg_velocity_error = np.mean(self.velocity_errors[-20:])
+            self.avg_control_effort = np.mean(self.control_efforts[-20:])
+            
+            # Compute overall tracking quality (lower is better)
+            self.tracking_quality = (self.avg_lateral_error + 
+                                   0.5 * self.avg_heading_error + 
+                                   0.2 * self.avg_velocity_error)
+    
+    def _update_trends(self):
+        """Update performance trend analysis."""
+        if len(self.lateral_errors) > 20:
+            # Compute error trend over recent history
+            recent_errors = self.lateral_errors[-20:]
+            old_errors = self.lateral_errors[-40:-20] if len(self.lateral_errors) >= 40 else recent_errors
+            
+            recent_avg = np.mean(recent_errors)
+            old_avg = np.mean(old_errors)
+            
+            self.error_trend = (recent_avg - old_avg) / max(old_avg, 0.01)
+            
+            # Compute stability metric (lower variance = more stable)
+            self.stability_metric = 1.0 / (1.0 + np.var(recent_errors))
+    
+    def get_performance_metrics(self) -> Dict[str, float]:
+        """Get current performance metrics."""
+        return {
+            'tracking_quality': self.tracking_quality,
+            'error_trend': self.error_trend,
+            'stability_metric': self.stability_metric,
+            'avg_lateral_error': self.avg_lateral_error,
+            'avg_heading_error': self.avg_heading_error,
+            'avg_control_effort': self.avg_control_effort
+        }
+
+
+class TrajectoryAnalyzer:
+    """Analyze trajectory characteristics for adaptive parameter tuning."""
+    
+    def __init__(self):
+        self.complexity_history = []
+        self.curvature_history = []
+        self.velocity_profile_history = []
+        
+    def analyze_trajectory_segment(self, trajectory: List[Dict], 
+                                 current_index: int, lookahead_points: int = 10) -> Dict[str, float]:
+        """Analyze upcoming trajectory segment characteristics."""
+        
+        if not trajectory or len(trajectory) < 3:
+            return {
+                'curvature': 0.0,
+                'complexity': 0.0,
+                'velocity_variation': 0.0,
+                'acceleration_demand': 0.0
+            }
+        
+        end_index = min(current_index + lookahead_points, len(trajectory))
+        segment = trajectory[current_index:end_index]
+        
+        # Analyze curvature
+        curvatures = self._compute_curvatures(segment)
+        max_curvature = max(curvatures) if curvatures else 0.0
+        avg_curvature = np.mean(curvatures) if curvatures else 0.0
+        
+        # Analyze velocity profile
+        velocities = [point['v'] for point in segment]
+        velocity_variation = np.std(velocities) if len(velocities) > 1 else 0.0
+        
+        # Analyze acceleration demands
+        accelerations = []
+        for i in range(1, len(segment)):
+            dt = 0.1  # Assume constant time step
+            dv = segment[i]['v'] - segment[i-1]['v']
+            accelerations.append(abs(dv / dt))
+        
+        acceleration_demand = max(accelerations) if accelerations else 0.0
+        
+        # Compute trajectory complexity
+        complexity = self._compute_trajectory_complexity(segment)
+        
+        return {
+            'curvature': max_curvature,
+            'avg_curvature': avg_curvature,
+            'complexity': complexity,
+            'velocity_variation': velocity_variation,
+            'acceleration_demand': acceleration_demand
+        }
+    
+    def _compute_curvatures(self, segment: List[Dict]) -> List[float]:
+        """Compute curvature for trajectory segment."""
+        curvatures = []
+        
+        for i in range(1, len(segment) - 1):
+            p1 = np.array([segment[i-1]['x'], segment[i-1]['y']])
+            p2 = np.array([segment[i]['x'], segment[i]['y']])
+            p3 = np.array([segment[i+1]['x'], segment[i+1]['y']])
+            
+            # Three-point curvature formula
+            a = np.linalg.norm(p2 - p1)
+            b = np.linalg.norm(p3 - p2)
+            c = np.linalg.norm(p3 - p1)
+            
+            if a > 1e-6 and b > 1e-6 and c > 1e-6:
+                area = 0.5 * abs(np.cross(p2 - p1, p3 - p1))
+                curvature = 2 * area / (a * b * c)
+                curvatures.append(curvature)
+        
+        return curvatures
+    
+    def _compute_trajectory_complexity(self, segment: List[Dict]) -> float:
+        """Compute trajectory complexity metric."""
+        if len(segment) < 3:
+            return 0.0
+        
+        # Compute heading changes
+        heading_changes = []
+        for i in range(1, len(segment)):
+            dtheta = abs(segment[i]['theta'] - segment[i-1]['theta'])
+            # Handle angle wrapping
+            if dtheta > np.pi:
+                dtheta = 2 * np.pi - dtheta
+            heading_changes.append(dtheta)
+        
+        # Complexity is based on total heading variation
+        complexity = sum(heading_changes) / len(heading_changes) if heading_changes else 0.0
+        
+        return complexity

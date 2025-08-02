@@ -21,7 +21,8 @@ import importlib.util
 def _load_config():
     """Load configuration module safely."""
     try:
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config.py')
+        # Use YAML configuration instead of config.py
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'lqr_params.yaml')
         spec = importlib.util.spec_from_file_location("lqr_config", config_path)
         config_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(config_module)
