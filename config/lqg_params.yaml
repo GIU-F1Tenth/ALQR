@@ -1,0 +1,132 @@
+# LQG Controller Configuration Parameters
+# These parameters configure the Linear Quadratic Gaussian (LQG) controller
+# which combines Extended Kalman Filter (EKF) state estimation with LQR optimal control
+
+# Vehicle Parameters
+vehicle:
+  wheelbase: 0.33 # Vehicle wheelbase [m]
+  max_speed: 8.0 # Maximum allowed speed [m/s]
+  min_speed: -2.0 # Minimum allowed speed (reverse) [m/s]
+
+# Control Parameters
+control:
+  frequency: 50.0 # Control loop frequency [Hz]
+  dt: 0.02 # Control time step [s] (1/frequency)
+  max_acceleration: 5.0 # Maximum acceleration [m/s²]
+  max_steering: 0.5 # Maximum steering angle [rad] (~28.6 degrees)
+
+# LQR Cost Matrices
+lqr:
+  # State cost matrix Q weights [x, y, v, theta]
+  Q_diag: [10.0, 10.0, 1.0, 5.0]
+
+  # Control cost matrix R weights [acceleration, steering]
+  R_diag: [0.1, 1.0]
+
+# Extended Kalman Filter (EKF) Parameters
+ekf:
+  # Initial state estimate [x, y, v, theta]
+  initial_state: [0.0, 0.0, 0.0, 0.0]
+
+  # Initial state covariance diagonal [x, y, v, theta]
+  initial_covariance_diag: [1.0, 1.0, 0.5, 0.1]
+
+  # Process noise covariance diagonal [x, y, v, theta]
+  # Represents uncertainty in vehicle dynamics model
+  process_noise_diag: [0.01, 0.01, 0.1, 0.05]
+
+  # Measurement noise parameters
+  measurement_noise:
+    imu: 0.1 # IMU angular velocity noise std dev [rad/s]
+    odometry: 0.05 # Odometry velocity noise std dev [m/s]
+    position: 0.1 # Position measurement noise std dev [m]
+
+# Safety Parameters
+safety:
+  emergency_brake_deceleration: 3.0 # Emergency brake deceleration [m/s²]
+  obstacle_detection_enabled: true # Enable LiDAR obstacle detection
+  min_obstacle_distance: 1.0 # Minimum safe distance to obstacles [m]
+
+  # Adaptive safety parameters
+  speed_dependent_safety: true # Adjust safety margins based on speed
+  max_lateral_acceleration: 4.0 # Maximum lateral acceleration [m/s²]
+
+# ROS2 Topic Names
+topics:
+  # Control output
+  control: "/drive"
+
+  # Sensor inputs
+  odometry: "/car_state/odom"
+  imu: "/imu"
+  laser_scan: "/scan"
+
+  # Planning inputs
+  trajectory: "/horizon_mapper/reference_trajectory"
+  path_ready: "/horizon_mapper/path_ready"
+
+  # LQG outputs
+  estimated_state: "/lqg_controller/estimated_state"
+  state_error: "/lqg_controller/state_error"
+  diagnostics: "/lqg_controller/diagnostics"
+
+# Performance Tuning
+performance:
+  # Filter health monitoring
+  estimation_quality_threshold: 0.5 # Position uncertainty threshold [m]
+  max_prediction_only_steps: 20 # Max EKF predictions without measurements
+
+  # Real-time performance
+  max_computation_time_ratio: 0.1 # Max computation time as fraction of dt
+  diagnostics_frequency: 5.0 # Diagnostics publishing frequency [Hz]
+
+  # Data logging
+  enable_performance_logging: true # Enable detailed performance tracking
+  history_length: 1000 # Number of historical data points to keep
+
+# Simulation vs Real Hardware Settings
+simulation:
+  # Set to true when running in Gazebo simulation
+  is_simulation: false
+
+  # Simulation-specific noise parameters (typically lower)
+  sim_measurement_noise:
+    imu: 0.05
+    odometry: 0.02
+    position: 0.05
+
+  # Real hardware noise parameters (typically higher)
+  real_measurement_noise:
+    imu: 0.15
+    odometry: 0.1
+    position: 0.2
+
+# Advanced EKF Tuning
+advanced_ekf:
+  # Adaptive noise covariance
+  adaptive_process_noise: false # Enable adaptive process noise
+  adaptive_measurement_noise: false # Enable adaptive measurement noise
+
+  # Innovation-based adaptation
+  innovation_threshold: 3.0 # Threshold for innovation-based adaptation
+  adaptation_rate: 0.01 # Rate of noise adaptation
+
+  # Outlier rejection
+  enable_outlier_rejection: true # Enable measurement outlier rejection
+  outlier_threshold: 2.5 # Mahalanobis distance threshold
+
+# LQR Advanced Parameters
+advanced_lqr:
+  # Adaptive LQR (if using adaptive controller)
+  enable_adaptive_gains: false # Enable adaptive LQR gains
+  adaptation_method: "gradient" # Adaptation method: "gradient" or "model_reference"
+
+  # Feedforward control
+  enable_feedforward: true # Enable feedforward control from trajectory
+  feedforward_velocity_gain: 0.8 # Velocity feedforward gain
+  feedforward_curvature_gain: 1.0 # Curvature feedforward gain
+
+  # Anti-windup
+  enable_integral_action: false # Enable integral action for steady-state error
+  integral_gain: 0.1 # Integral gain
+  integral_saturation: 1.0 # Integral saturation limit
