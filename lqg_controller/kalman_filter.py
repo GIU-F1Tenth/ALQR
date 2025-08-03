@@ -147,7 +147,7 @@ class ExtendedKalmanFilter:
             self.last_control = control_input.copy()
 
             # Predict next state using kinematic bicycle model
-            x_pred = self.model.update_state(self.x_hat, control_input)
+            x_pred = self.model.dynamics(self.x_hat, control_input)
 
             # Compute Jacobian of process model (F matrix)
             F = self._compute_process_jacobian(self.x_hat, control_input)
@@ -190,7 +190,7 @@ class ExtendedKalmanFilter:
             if abs(steering_angle) < 1e-6:
                 h_x = 0.0  # No turning
             else:
-                h_x = self.x_hat[2] * np.tan(steering_angle) / self.model.wheelbase
+                h_x = self.x_hat[2] * np.tan(steering_angle) / self.model.L
 
             # Measurement residual (innovation)
             y = angular_velocity_measurement - h_x
@@ -338,7 +338,7 @@ class ExtendedKalmanFilter:
         # theta_{k+1} = theta_k + (v_k * tan(delta_k) / wheelbase) * dt
 
         dt = self.dt
-        L = self.model.wheelbase
+        L = self.model.L
 
         # Compute partial derivatives
         F = np.eye(4)
@@ -374,7 +374,7 @@ class ExtendedKalmanFilter:
             H: Measurement model Jacobian (1x4)
         """
         # Measurement model: h(x) = v * tan(delta) / wheelbase
-        L = self.model.wheelbase
+        L = self.model.L
 
         H = np.zeros(4)
 
