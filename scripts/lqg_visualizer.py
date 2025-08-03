@@ -41,7 +41,18 @@ from sensor_msgs.msg import Imu
 from ackermann_msgs.msg import AckermannDriveStamped
 from std_msgs.msg import Bool, Float32
 from diagnostic_msgs.msg import DiagnosticArray
-from giu_f1t_interfaces.msg import VehicleStateArray
+try:
+    from giu_f1t_interfaces.msg import VehicleStateArray
+except ImportError as e:
+    VehicleStateArray = None
+    import sys
+    print(
+        "ERROR: Could not import 'giu_f1t_interfaces.msg.VehicleStateArray'.\n"
+        "This package is required for the visualizer to function.\n"
+        "Please ensure that the 'giu_f1t_interfaces' ROS2 package is built and sourced.\n"
+        f"Original error: {e}",
+        file=sys.stderr
+    )
 from tf_transformations import euler_from_quaternion
 
 
