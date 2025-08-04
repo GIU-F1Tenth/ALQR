@@ -13,7 +13,33 @@ Version: 1.0.0
 
 import numpy as np
 from typing import Tuple, Optional
-import math
+import sys
+import os
+import importlib.util
+
+# Import config using absolute path to avoid conflicts
+def _load_config():
+    """Load configuration module safely."""
+    try:
+        # Use YAML configuration instead of config.py
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'lqr_params.yaml')
+        spec = importlib.util.spec_from_file_location("lqr_config", config_path)
+        config_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(config_module)
+        return config_module
+    except Exception:
+        # Fallback to default values
+        class DefaultConfig:
+            wheelbase = 0.33
+            dt = 0.05
+            max_acceleration = 5.0
+            max_deceleration = 9.0
+            max_steering_angle = 0.9
+            max_speed = 15.0
+        return DefaultConfig()
+
+# Load config at module level
+_config = _load_config()
 
 
 class KinematicBicycleModel:
@@ -31,7 +57,7 @@ class KinematicBicycleModel:
     - delta: steering angle [rad]
     """
 
-    def __init__(self, wheelbase: float = 0.33, dt: float = 0.05):
+    def __init__(self, wheelbase: float = None, dt: float = None):
         """
         Initialize the kinematic bicycle model.
 
@@ -39,8 +65,8 @@ class KinematicBicycleModel:
             wheelbase: Distance between front and rear axles [m]
             dt: Discrete time step [s]
         """
-        self.L = wheelbase
-        self.dt = dt
+        self.L = wheelbase if wheelbase is not None else _config.wheelbase
+        self.dt = dt if dt is not None else _config.dt
 
     def dynamics(self, state: np.ndarray, control: np.ndarray) -> np.ndarray:
         """
@@ -140,8 +166,8 @@ class KinematicBicycleModel:
         if not np.all(np.isfinite(state)):
             return False
 
-        # Check velocity bounds (reasonable for F1TENTH)
-        if v < -1.0 or v > 15.0:  # Allow small reverse velocity
+        # Check velocity bounds (from config)
+        if v < -1.0 or v > _config.max_speed:  # Allow small reverse velocity
             return False
 
         # Normalize heading angle to [-π, π]
@@ -150,8 +176,8 @@ class KinematicBicycleModel:
 
         return True
 
-    def validate_control(self, control: np.ndarray, max_acceleration: float = 5.0,
-                         max_steering: float = 0.5) -> bool:
+    def validate_control(self, control: np.ndarray, max_acceleration: float = None,
+                         max_steering: float = None) -> bool:
         """
         Validate that the control input is within reasonable bounds.
 
@@ -172,12 +198,15 @@ class KinematicBicycleModel:
         if not np.all(np.isfinite(control)):
             return False
 
+        max_accel = max_acceleration if max_acceleration is not None else max(_config.max_acceleration, _config.max_deceleration)
+        max_steer = max_steering if max_steering is not None else _config.max_steering_angle
+
         # Check acceleration bounds
-        if abs(a) > max_acceleration:
+        if abs(a) > max_accel:
             return False
 
         # Check steering bounds
-        if abs(delta) > max_steering:
+        if abs(delta) > max_steer:
             return False
 
         return True
