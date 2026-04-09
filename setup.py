@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 import os
 from glob import glob
 
-package_name = 'lqr_controller'
+package_name = 'lqg_controller'
 
 setup(
     name=package_name,
@@ -24,12 +24,13 @@ setup(
     zip_safe=True,
     maintainer='Mohammed Azab',
     maintainer_email='mohammed@azab.io',
-    description='Linear Quadratic Regulator (LQR) controller for autonomous systems with GUI visualizer.',
+    description='Linear Quadratic Regulator (LQR) and Linear Quadratic Gaussian (LQG) controllers for F1TENTH autonomous racing with state estimation and GUI visualization.',
     license='MIT',
     tests_require=['pytest', 'pytest-cov'],
     entry_points={
         'console_scripts': [
-            'lqr_node = lqr_controller.lqr_node:main',
+            'lqr_node = lqg_controller.lqr_node:main',
+            'lqg_node = lqg_controller.lqg_node:main',
         ],
     },
 )
