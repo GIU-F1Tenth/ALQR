@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-    <name>lqg_controller</name>
+    <name>lqr_controller</name>
     <version>1.0.0</version>
-    <description>Linear Quadratic Regulator (LQR) and Linear Quadratic Gaussian (LQG) controllers for F1TENTH autonomous racing with state estimation and GUI visualization.</description>
+    <description>Adaptive Linear Quadratic Regulator (LQR) controller for F1TENTH autonomous racing with real-time parameter tuning and GUI visualization.</description>
 
     <maintainer email="mohammed@azab.io">Mohammed Azab</maintainer>
     <license>MIT</license>

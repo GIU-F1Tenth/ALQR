@@ -3,7 +3,8 @@
 """
 Launch file for LQR Controller
 
-This launch file starts the LQR controller node with configurable parameters.
+Starts the horizon_mapper (path planner) node first, then the adaptive LQR
+controller node once the path planner is ready.
 
 Author: Mohammed Azab <mohammed@azab.io>
 License: MIT
@@ -11,22 +12,23 @@ License: MIT
 
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.event_handlers import OnProcessStart
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
-    """Generate launch description for LQR controller."""
+    """Generate launch description for horizon_mapper + LQR controller."""
 
-    # Package directory
-    pkg_share = FindPackageShare('lqg_controller')
+    # Package directories
+    lqr_pkg_share = FindPackageShare('lqr_controller')
+    horizon_pkg_share = FindPackageShare('horizon_mapper')
 
     # Default config file path
     default_config_file = PathJoinSubstitution([
-        pkg_share, 'config', 'lqr_params.yaml'
+        lqr_pkg_share, 'config', 'lqr_params.yaml'
     ])
 
     # Launch arguments
@@ -48,9 +50,23 @@ def generate_launch_description():
         description='Use simulation time'
     )
 
-    # LQR controller node
+    # horizon_mapper (path planner) node — must start before LQR
+    horizon_mapper_node = Node(
+        package='horizon_mapper',
+        executable='horizon_mapper_node',
+        name='horizon_mapper_node',
+        parameters=[
+            {'use_sim_time': LaunchConfiguration('use_sim_time')}
+        ],
+        output='screen',
+        emulate_tty=True,
+        respawn=True,
+        respawn_delay=2.0
+    )
+
+    # LQR controller node — starts after horizon_mapper is up
     lqr_controller_node = Node(
-        package='lqg_controller',
+        package='lqr_controller',
         executable='lqr_node',
         name='lqr_controller_node',
         parameters=[
@@ -66,9 +82,18 @@ def generate_launch_description():
         respawn_delay=2.0
     )
 
+    # Register LQR to start only after horizon_mapper process has started
+    lqr_after_horizon = RegisterEventHandler(
+        OnProcessStart(
+            target_action=horizon_mapper_node,
+            on_start=[lqr_controller_node]
+        )
+    )
+
     return LaunchDescription([
         config_file_arg,
         debug_arg,
         use_sim_time_arg,
-        lqr_controller_node
+        horizon_mapper_node,
+        lqr_after_horizon,
     ])
