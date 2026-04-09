@@ -1,0 +1,3 @@
+[submodule "path_planner"]
+	path = path_planner
+	url = https://github.com/GIU-F1Tenth/horizon_mapper
