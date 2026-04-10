@@ -26,7 +26,9 @@ setup(
     maintainer_email='mohammed@azab.io',
     description='Adaptive Linear Quadratic Regulator (LQR) controller for F1TENTH autonomous racing with real-time parameter tuning and GUI visualization.',
     license='MIT',
-    tests_require=['pytest', 'pytest-cov'],
+    extras_require={
+        'test': ['pytest', 'pytest-cov'],
+    },
     entry_points={
         'console_scripts': [
             'lqr_node = lqr_controller.lqr_node:main',
