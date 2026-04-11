@@ -121,7 +121,7 @@ lqr_weights:
 ros2 launch lqr_controller lqr_controller.launch.py
 
 # Launch with horizon mapper
-ros2 launch lqr_controller lqr_with_horizon_mapper.launch.py
+ros2 launch lqr_controller lqr_controller.launch.py
 
 # Launch with custom config
 ros2 launch lqr_controller lqr_controller.launch.py config_file:=/path/to/config.yaml
