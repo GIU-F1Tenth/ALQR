@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 
 """
-Launch file for LQR Controller
+Launch file for the LQR controller stack.
 
-Starts the horizon_mapper (path planner) node first, then the adaptive LQR
-controller node once the path planner is ready.
+Starts the horizon_mapper (path planner) and adaptive LQR controller nodes in
+parallel so neither launch waits on the other.
 
 Author: Mohammed Azab <mohammed@azab.io>
 License: MIT
 """
 
-import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler
-from launch.event_handlers import OnProcessStart
+from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -24,7 +22,6 @@ def generate_launch_description():
 
     # Package directories
     lqr_pkg_share = FindPackageShare('lqr_controller')
-    horizon_pkg_share = FindPackageShare('horizon_mapper')
 
     # Default config file path
     default_config_file = PathJoinSubstitution([
@@ -50,7 +47,7 @@ def generate_launch_description():
         description='Use simulation time'
     )
 
-    # horizon_mapper (path planner) node — must start before LQR
+    # horizon_mapper (path planner) node
     horizon_mapper_node = Node(
         package='horizon_mapper',
         executable='horizon_mapper_node',
@@ -64,7 +61,7 @@ def generate_launch_description():
         respawn_delay=2.0
     )
 
-    # LQR controller node — starts after horizon_mapper is up
+    # LQR controller node
     lqr_controller_node = Node(
         package='lqr_controller',
         executable='lqr_node',
@@ -82,18 +79,10 @@ def generate_launch_description():
         respawn_delay=2.0
     )
 
-    # Register LQR to start only after horizon_mapper process has started
-    lqr_after_horizon = RegisterEventHandler(
-        OnProcessStart(
-            target_action=horizon_mapper_node,
-            on_start=[lqr_controller_node]
-        )
-    )
-
     return LaunchDescription([
         config_file_arg,
         debug_arg,
         use_sim_time_arg,
         horizon_mapper_node,
-        lqr_after_horizon,
+        lqr_controller_node,
     ])
