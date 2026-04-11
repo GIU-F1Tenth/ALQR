@@ -28,9 +28,10 @@ from giu_f1t_interfaces.msg import VehicleStateArray
 try:
     from tf_transformations import euler_from_quaternion
 except ImportError:
-    def euler_from_quaternion(quat):
+    def euler_from_quaternion(quaternion, axes: str = 'sxyz'):
         """Fallback conversion: quaternion [x, y, z, w] -> roll, pitch, yaw."""
-        x, y, z, w = quat
+        del axes  # Fallback implementation supports only the default axis sequence.
+        x, y, z, w = quaternion
 
         sinr_cosp = 2.0 * (w * x + y * z)
         cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
@@ -229,7 +230,7 @@ class WobbleDetector:
             derivatives.append(abs(data[i] - data[i-1]))
         
         # Return average rate of change as oscillation measure
-        return np.mean(derivatives) if derivatives else 0.0
+        return float(np.mean(derivatives)) if derivatives else 0.0
     
     def is_wobbling(self) -> bool:
         """Check if vehicle is currently wobbling."""
