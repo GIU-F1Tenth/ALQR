@@ -26,6 +26,12 @@ This package implements a Linear Quadratic Regulator (LQR) controller for trajec
 
 ## Usage
 
+Build both ALQR components (LQR + Horizon Mapper) from the workspace root:
+
+```bash
+colcon build --base-paths src/control/alqr src/control/alqr/path_planner
+```
+
 Launch the LQR controller node:
 
 ```bash
