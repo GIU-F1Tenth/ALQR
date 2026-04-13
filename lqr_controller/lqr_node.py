@@ -478,7 +478,7 @@ class AdaptiveLQRNode(Node):
         self.declare_parameter('safety.min_safe_speed', 1.0)
         
         # Topics
-        self.declare_parameter('odom_topic', '/car_state/odom')
+        self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('reference_topic', '/horizon_mapper/reference_trajectory')
         self.declare_parameter('status_topic', '/horizon_mapper/path_ready')
         self.declare_parameter('control_topic', '/drive')
@@ -487,8 +487,7 @@ class AdaptiveLQRNode(Node):
         
         # QoS and Logging
         self.declare_parameter('qos_depth', 10)
-        self.declare_parameter('enable_logging', True)
-        self.declare_parameter('debug_logging_enabled', False)
+        self.declare_parameter('debug', False)
         self.declare_parameter('performance_logging_enabled', True)
         self.declare_parameter('log_frequency_divider', 10)
 
@@ -577,8 +576,8 @@ class AdaptiveLQRNode(Node):
         
         # QoS and Logging
         self.qos_depth = self.get_parameter('qos_depth').value
-        self.enable_logging = self.get_parameter('enable_logging').value
-        self.debug_logging_enabled = self.get_parameter('debug_logging_enabled').value
+        self.debug = self.get_parameter('debug').value
+        self.enable_logging = self.debug
         self.performance_logging_enabled = self.get_parameter('performance_logging_enabled').value
         self.log_frequency_divider = self.get_parameter('log_frequency_divider').value
 
@@ -593,7 +592,7 @@ class AdaptiveLQRNode(Node):
                 adaptive_params=self.adaptive_params,
                 max_acceleration=self.max_acceleration,
                 max_steering=self.max_steering_angle,
-                enable_logging=self.enable_logging,
+                enable_logging=self.debug,
                 logger=self.get_logger()
             )
 
@@ -620,7 +619,7 @@ class AdaptiveLQRNode(Node):
             try:
                 self.safety_monitor = SafetyMonitor(
                     safety_params=self.safety_params,
-                    enable_logging=self.enable_logging,
+                    enable_logging=self.debug,
                     logger=self.get_logger()
                 )
                 
@@ -639,7 +638,20 @@ class AdaptiveLQRNode(Node):
             self.get_logger().info("Safety monitor disabled")
 
     def _initialize_enhanced_controllers(self):
-        """Initialize enhanced control components."""
+        """Initialize enhanced control components with RViz integration.
+        
+        Features:
+        - RViz 2D Pose Estimate to set initial vehicle pose
+        - Conservative speed ramping (0.5 m/s per second)
+        - Curve detection and steering rate limiting
+        """
+        
+        self.get_logger().info(
+            "Enhanced controllers initialized:\n"
+            "  - RViz pose integration: Use '2D Pose Estimate' tool\n"
+            "  - Speed ramping: Conservative 0.5 m/s per second\n"
+            "  - Trajectory tracking with safety monitoring"
+        )
         
         # Simple curve analyzer implementation
         self.curve_analyzer = None
@@ -695,8 +707,34 @@ class AdaptiveLQRNode(Node):
         
         # Safety state
         self.last_control_command = np.zeros(2)
+        self._last_control_block_reason = None
+        self._last_emergency_stop_reason = None
+        self._last_emergency_stop_time = 0.0
         
         self.get_logger().info("Node state initialized")
+
+    def _get_runtime_snapshot(self) -> str:
+        """Build a short summary of the controller runtime state."""
+        pose_state = "set" if self.current_pose is not None else "none"
+        reference_count = len(self.reference_trajectory)
+        solve_age = "n/a"
+        if self.last_successful_solve_time > 0.0:
+            solve_age = f"{time.time() - self.last_successful_solve_time:.2f}s"
+
+        return (
+            f"path_ready={self.path_ready} ref_points={reference_count} "
+            f"pose={pose_state} v={self.current_velocity:.2f}m/s "
+            f"yaw={self.current_heading:.2f}rad solve_age={solve_age} "
+            f"active={self.control_active} failures={self.consecutive_failures}"
+        )
+
+    def _log_control_block_reason(self, reason: str):
+        """Log why the controller is not publishing drive commands."""
+        if reason != self._last_control_block_reason:
+            self._last_control_block_reason = reason
+            self.get_logger().warning(f"Control blocked: {reason} | {self._get_runtime_snapshot()}")
+        elif self.debug:
+            self.get_logger().info(f"Control still blocked: {reason}")
 
     def _setup_subscriptions(self):
         """Set up ROS2 subscriptions."""
@@ -826,19 +864,22 @@ class AdaptiveLQRNode(Node):
                 self.safety_monitor.update_lidar(msg)
                 
         except Exception as e:
-            if self.debug_logging_enabled:
+            if self.debug:
                 self.get_logger().warning(f"Lidar processing error: {e}")
 
     def odom_callback(self, msg: Odometry):
-        """Handle odometry messages."""
+        """Handle odometry messages with robust velocity and pose extraction."""
         
         try:
+            # Update pose
             self.current_pose = msg.pose.pose
             
-            # Extract velocity information
-            self.current_velocity = np.sqrt(
-                msg.twist.twist.linear.x**2 + msg.twist.twist.linear.y**2
-            )
+            # Extract linear velocity (magnitude of velocity vector for 2D)
+            linear_vel_x = msg.twist.twist.linear.x
+            linear_vel_y = msg.twist.twist.linear.y
+            self.current_velocity = np.sqrt(linear_vel_x**2 + linear_vel_y**2)
+            
+            # Extract angular velocity
             self.current_angular_velocity = msg.twist.twist.angular.z
             
             # Extract heading from quaternion
@@ -850,10 +891,14 @@ class AdaptiveLQRNode(Node):
             # Log first message
             if not hasattr(self, '_first_odom_received'):
                 self._first_odom_received = True
-                self.get_logger().info("Odometry: first message received")
+                self.get_logger().info(
+                    f"Odometry: first message received | pose=({self.current_pose.position.x:.3f}, "
+                    f"{self.current_pose.position.y:.3f}) v={self.current_velocity:.3f}m/s"
+                )
                 
         except Exception as e:
             self.get_logger().error(f"Odometry processing error: {e}")
+            traceback.print_exc()
 
     def reference_callback(self, msg: VehicleStateArray):
         """Handle reference trajectory messages."""
@@ -869,7 +914,7 @@ class AdaptiveLQRNode(Node):
                     'v': state.v
                 })
             
-            if self.debug_logging_enabled:
+            if self.debug:
                 self.get_logger().info(f"Trajectory: {len(self.reference_trajectory)} points")
                 
         except Exception as e:
@@ -877,18 +922,44 @@ class AdaptiveLQRNode(Node):
 
     def status_callback(self, msg: Bool):
         """Handle path status messages."""
+        previous_state = self.path_ready
         self.path_ready = msg.data
         
-        if self.debug_logging_enabled:
-            self.get_logger().info(f"Path: {'ready' if self.path_ready else 'not ready'}")
+        if self.path_ready != previous_state:
+            self.get_logger().info(
+                f"Path status changed: {'ready' if self.path_ready else 'not ready'} | {self._get_runtime_snapshot()}"
+            )
+        elif self.debug:
+            self.get_logger().info(f"Path status received: {'ready' if self.path_ready else 'not ready'}")
 
     def pose_estimate_callback(self, msg: PoseStamped):
-        """Handle initial pose estimate for reset."""
-        if self.debug_logging_enabled:
-            self.get_logger().info("Pose estimate received, resetting adaptation")
-        
-        # Reset adaptive controller when pose is manually set
-        self.lqr_controller.reset_adaptation()
+        """Handle initial pose estimate from RViz for pose initialization."""
+        try:
+            # Update current pose with RViz pose estimate
+            self.current_pose = msg.pose
+            
+            # Extract heading from quaternion
+            orientation = msg.pose.orientation
+            _, _, self.current_heading = euler_from_quaternion([
+                orientation.x, orientation.y, orientation.z, orientation.w
+            ])
+            
+            # Reset velocity when pose is manually set
+            self.current_velocity = 0.0
+            self.current_angular_velocity = 0.0
+            
+            # Reset trajectory tracking to find new starting point
+            self.current_reference_index = 0
+            
+            # Reset adaptive controller for clean restart
+            self.lqr_controller.reset_adaptation()
+            
+            self.get_logger().info(
+                f"Pose updated from RViz | x={self.current_pose.position.x:.3f} "
+                f"y={self.current_pose.position.y:.3f} theta={self.current_heading:.3f}rad"
+            )
+        except Exception as e:
+            self.get_logger().error(f"Error processing pose estimate: {e}")
 
     def check_safety_conditions(self) -> bool:
         """Check if it's safe to execute control."""
@@ -957,7 +1028,7 @@ class AdaptiveLQRNode(Node):
                 analysis_info.update(curve_info)
                 self.current_curvature = curve_info.get('curvature', 0.0)
             except Exception as e:
-                if self.debug_logging_enabled:
+                if self.debug:
                     self.get_logger().warning(f"Curve analysis failed: {e}")
         
         return reference_state, analysis_info
@@ -992,25 +1063,46 @@ class AdaptiveLQRNode(Node):
         return np.array([feedforward_acceleration, feedforward_steering])
 
     def find_closest_reference_point(self, current_state: np.ndarray) -> int:
-        """Find the index of the closest reference point."""
+        """Find the index of the closest reference point with sequential tracking.
+        
+        Uses a sequential search starting from the current reference index to avoid
+        erratic jumps when the vehicle is stationary or moving slowly.
+        """
         
         if len(self.reference_trajectory) == 0:
             return 0
         
-        min_distance = float('inf')
-        closest_index = 0
-        
         current_position = current_state[:2]
+        current_index = self.current_reference_index if hasattr(self, 'current_reference_index') else 0
         
-        for i, ref_point in enumerate(self.reference_trajectory):
+        # Search forward from current index to find lookahead point
+        min_distance = float('inf')
+        best_index = current_index
+        
+        # Search a window of points around current index
+        search_start = max(0, current_index - 5)
+        search_end = min(len(self.reference_trajectory), current_index + 15)
+        
+        for i in range(search_start, search_end):
+            ref_point = self.reference_trajectory[i]
             ref_position = np.array([ref_point['x'], ref_point['y']])
             distance = np.linalg.norm(current_position - ref_position)
             
             if distance < min_distance:
                 min_distance = distance
-                closest_index = i
+                best_index = i
         
-        return closest_index
+        # If no good point found in window and we're very close to a point, advance
+        if best_index == current_index and current_index < len(self.reference_trajectory) - 1:
+            ref_point = self.reference_trajectory[current_index]
+            ref_position = np.array([ref_point['x'], ref_point['y']])
+            distance_to_current = np.linalg.norm(current_position - ref_position)
+            
+            # If we're close to current point, look ahead
+            if distance_to_current < 0.5:  # Within 0.5m of current reference point
+                best_index = min(current_index + 1, len(self.reference_trajectory) - 1)
+        
+        return best_index
 
     def control_callback(self):
         """Enhanced adaptive control loop with safety monitoring."""
@@ -1020,8 +1112,34 @@ class AdaptiveLQRNode(Node):
 
         try:
             # Check safety conditions
+            if not self.path_ready:
+                self._log_control_block_reason("waiting for horizon mapper path_ready=true")
+                self.publish_emergency_stop("path not ready")
+                return
+
+            if self.current_pose is None:
+                self._log_control_block_reason("waiting for odometry/pose")
+                self.publish_emergency_stop("no current pose")
+                return
+
+            if len(self.reference_trajectory) == 0:
+                self._log_control_block_reason("reference trajectory is empty")
+                self.publish_emergency_stop("empty reference trajectory")
+                return
+
+            if self.enable_safety_checks:
+                current_time = time.time()
+                solve_age = current_time - self.last_successful_solve_time
+                if self.last_successful_solve_time > 0.0 and solve_age > self.safety_timeout:
+                    self._log_control_block_reason(
+                        f"control loop timed out after {solve_age:.2f}s without a successful solve"
+                    )
+                    self.publish_emergency_stop("control timeout")
+                    return
+
             if not self.check_safety_conditions():
-                self.publish_emergency_stop()
+                self._log_control_block_reason("safety gate rejected the current state")
+                self.publish_emergency_stop("safety gate rejected state")
                 return
 
             # Get current state
@@ -1029,8 +1147,10 @@ class AdaptiveLQRNode(Node):
 
             # Validate current state
             if not self.kinematic_model.validate_state(current_state):
-                self.get_logger().warning("Invalid current state, stopping")
-                self.publish_emergency_stop()
+                self.get_logger().warning(
+                    f"Invalid current state, stopping | state={current_state.tolist()} | {self._get_runtime_snapshot()}"
+                )
+                self.publish_emergency_stop("invalid current state")
                 return
 
             # Update safety monitor with current vehicle state
@@ -1072,20 +1192,29 @@ class AdaptiveLQRNode(Node):
                 # Check for emergency stop
                 safety_status = self.safety_monitor.get_safety_status()
                 if safety_status['emergency_stop_required']:
-                    self.publish_emergency_stop()
+                    self.get_logger().warning(
+                        "Emergency stop required by safety monitor | "
+                        f"min_obstacle={safety_status['min_obstacle_distance']:.2f}m "
+                        f"collision_imminent={safety_status['collision_imminent']} "
+                        f"wobbling={safety_status['wobbling']}"
+                    )
+                    self.publish_emergency_stop("safety monitor emergency stop")
                     return
 
             # Validate control output
             if not self.kinematic_model.validate_control(control, self.max_acceleration, self.max_steering_angle):
-                self.get_logger().warning("Invalid control output, stopping")
-                self.publish_emergency_stop()
+                self.get_logger().warning(
+                    f"Invalid control output, stopping | accel={control[0]:.3f} steer={control[1]:.3f} | "
+                    f"{self._get_runtime_snapshot()}"
+                )
+                self.publish_emergency_stop("invalid control output")
                 return
 
             # Store last control command for safety monitoring
             self.last_control_command = control.copy()
 
             # Publish control command
-            self.publish_control_command(control)
+            self.publish_control_command(control, reference_state)
 
             # Publish enhanced diagnostics including adaptation and safety info
             self.publish_enhanced_debug_info(analysis_info)
@@ -1105,14 +1234,23 @@ class AdaptiveLQRNode(Node):
             self.last_successful_solve_time = time.time()
             self.control_active = True
 
+            if self.control_iteration_count == 1 or self.control_iteration_count % self.log_frequency_divider == 0:
+                self.get_logger().info(
+                    f"Control step {self.control_iteration_count}: "
+                    f"ref_idx={current_index} ref_points={len(self.reference_trajectory)} "
+                    f"curvature={analysis_info.get('curvature', 0.0):.3f} "
+                    f"lookahead={analysis_info.get('lookahead_distance', self.lookahead_distance):.2f}m "
+                    f"{self._get_runtime_snapshot()}"
+                )
+
             # Enhanced debug logging with adaptation and safety info
-            if (self.debug_logging_enabled and
+            if (self.debug and
                     self.control_iteration_count % (self.log_frequency_divider * 2) == 0):
-                
+
                 adaptation_info = self.lqr_controller.get_adaptation_info()
                 current_weights = adaptation_info['current_weights']
                 performance_metrics = adaptation_info['performance_metrics']
-                
+
                 safety_info = ""
                 if self.safety_monitor:
                     safety_status = self.safety_monitor.get_safety_status()
@@ -1120,7 +1258,7 @@ class AdaptiveLQRNode(Node):
                         f" | safety={'active' if safety_status['safety_active'] else 'ok'} "
                         f"obs={safety_status['min_obstacle_distance']:.2f}m"
                     )
-                
+
                 self.get_logger().info(
                     f"[{self.control_iteration_count}] "
                     f"w=pos:{current_weights['position']:.2f} "
@@ -1139,8 +1277,13 @@ class AdaptiveLQRNode(Node):
                 self.get_logger().error("5 consecutive control failures — emergency stop")
                 self.publish_emergency_stop()
 
-    def publish_control_command(self, control: np.ndarray):
-        """Publish control command to the vehicle."""
+    def publish_control_command(self, control: np.ndarray, reference_state: np.ndarray = None):
+        """Publish control command to the vehicle.
+        
+        Args:
+            control: Control input [acceleration, steering_angle]
+            reference_state: Reference state [x_ref, y_ref, v_ref, theta_ref] for better speed tracking
+        """
         
         try:
             msg = AckermannDriveStamped()
@@ -1149,15 +1292,47 @@ class AdaptiveLQRNode(Node):
             
             msg.drive.acceleration = float(control[0])
             msg.drive.steering_angle = float(control[1])
-            msg.drive.speed = float(self.current_velocity + control[0] * self.dt)
+            
+            # Use reference velocity but with conservative ramping
+            if reference_state is not None:
+                target_velocity = reference_state[2]
+                # Conservative ramp to target velocity for safety
+                ramp_rate = 0.5  # Slower ramp: 0.5 m/s per second
+                
+                if self.current_velocity < target_velocity:
+                    msg.drive.speed = float(min(
+                        self.current_velocity + ramp_rate * self.dt,
+                        target_velocity
+                    ))
+                else:
+                    # Decelerate conservatively
+                    msg.drive.speed = float(max(
+                        self.current_velocity - ramp_rate * self.dt,
+                        target_velocity
+                    ))
+            else:
+                # Fallback: use integrated acceleration command
+                msg.drive.speed = float(self.current_velocity + control[0] * self.dt)
+            
+            # Ensure speed is within valid range
+            msg.drive.speed = float(np.clip(msg.drive.speed, 0.0, self.max_speed))
             
             self.control_publisher.publish(msg)
             self.last_control_time = time.time()
+
+            self._last_control_block_reason = None
+
+            if self.debug:
+                self.get_logger().info(
+                    f"Published drive command | accel={msg.drive.acceleration:.3f} "
+                    f"steer={msg.drive.steering_angle:.3f} speed={msg.drive.speed:.3f} "
+                    f"topic={self.control_topic}"
+                )
             
         except Exception as e:
             self.get_logger().error(f"Control command publish failed: {e}")
 
-    def publish_emergency_stop(self):
+    def publish_emergency_stop(self, reason: str = "unspecified"):
         """Publish emergency stop command."""
         
         try:
@@ -1170,9 +1345,18 @@ class AdaptiveLQRNode(Node):
             msg.drive.speed = 0.0
             
             self.control_publisher.publish(msg)
-            
-            if self.debug_logging_enabled:
-                self.get_logger().warning("Emergency stop sent")
+            self.control_active = False
+            now = time.time()
+            if (
+                reason != self._last_emergency_stop_reason
+                or (now - self._last_emergency_stop_time) > 1.0
+            ):
+                self._last_emergency_stop_reason = reason
+                self._last_emergency_stop_time = now
+                self.get_logger().warning(
+                    f"Emergency stop sent | reason={reason} accel={msg.drive.acceleration:.3f} "
+                    f"steer={msg.drive.steering_angle:.3f} speed={msg.drive.speed:.3f}"
+                )
                 
         except Exception as e:
             self.get_logger().error(f"Emergency stop publish failed: {e}")
@@ -1214,7 +1398,7 @@ class AdaptiveLQRNode(Node):
             self.diagnostics_publisher.publish(diag_msg)
             
         except Exception as e:
-            if self.debug_logging_enabled:
+            if self.debug:
                 self.get_logger().warning(f"Failed to publish safety status: {e}")
 
     def publish_adaptation_status(self):
@@ -1266,7 +1450,7 @@ class AdaptiveLQRNode(Node):
             self.adaptation_status_publisher.publish(diag_msg)
             
         except Exception as e:
-            if self.debug_logging_enabled:
+            if self.debug:
                 self.get_logger().warning(f"Failed to publish adaptation status: {e}")
 
     def publish_enhanced_debug_info(self, analysis_info: Dict):

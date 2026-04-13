@@ -3,8 +3,8 @@
 """
 Launch file for the LQR controller stack.
 
-Starts the horizon_mapper (path planner) and adaptive LQR controller nodes in
-parallel so neither launch waits on the other.
+Starts the horizon_mapper (path planner) and adaptive LQR controller nodes with
+their matching parameter files.
 
 Author: Mohammed Azab <mohammed@azab.io>
 License: MIT
@@ -23,16 +23,25 @@ def generate_launch_description():
     # Package directories
     lqr_pkg_share = FindPackageShare('lqr_controller')
 
-    # Default config file path
-    default_config_file = PathJoinSubstitution([
+    # Default config file paths
+    default_lqr_config_file = PathJoinSubstitution([
         lqr_pkg_share, 'config', 'lqr_params.yaml'
+    ])
+    default_horizon_config_file = PathJoinSubstitution([
+        lqr_pkg_share, 'path_planner', 'config', 'horizon_mapper.yaml'
     ])
 
     # Launch arguments
     config_file_arg = DeclareLaunchArgument(
         'config_file',
-        default_value=default_config_file,
+        default_value=default_lqr_config_file,
         description='Path to LQR controller configuration file'
+    )
+
+    horizon_config_file_arg = DeclareLaunchArgument(
+        'horizon_config_file',
+        default_value=default_horizon_config_file,
+        description='Path to horizon mapper configuration file'
     )
 
     debug_arg = DeclareLaunchArgument(
@@ -53,10 +62,15 @@ def generate_launch_description():
         executable='horizon_mapper_node',
         name='horizon_mapper_node',
         parameters=[
+            LaunchConfiguration('horizon_config_file'),
+            {
+                'enable_logging': LaunchConfiguration('debug'),
+                'enable_debugging': LaunchConfiguration('debug'),
+            },
             {'use_sim_time': LaunchConfiguration('use_sim_time')}
         ],
         output='screen',
-        emulate_tty=True,
+        emulate_tty=True, 
         respawn=True,
         respawn_delay=2.0
     )
@@ -65,12 +79,12 @@ def generate_launch_description():
     lqr_controller_node = Node(
         package='lqr_controller',
         executable='lqr_node',
-        name='lqr_controller_node',
+        name='adaptive_lqr_controller_node',
         parameters=[
             LaunchConfiguration('config_file'),
             {
                 'use_sim_time': LaunchConfiguration('use_sim_time'),
-                'debug_logging_enabled': LaunchConfiguration('debug')
+                'debug': LaunchConfiguration('debug')
             }
         ],
         output='screen',
@@ -81,6 +95,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         config_file_arg,
+        horizon_config_file_arg,
         debug_arg,
         use_sim_time_arg,
         horizon_mapper_node,
