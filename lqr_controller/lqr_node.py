@@ -406,65 +406,60 @@ class AdaptiveLQRNode(Node):
         self.get_logger().info("LQR controller node started")
 
     def _declare_parameters(self):
-        """Declare all ROS2 parameters including adaptive parameters."""
-        
-        # Vehicle Parameters
+        # Vehicle
         self.declare_parameter('wheelbase', 0.33)
         self.declare_parameter('dt', 0.05)
-        
-        # Control Limits
+
+        # Speed limits
         self.declare_parameter('max_acceleration', 5.0)
-        self.declare_parameter('max_deceleration', 9.0)
         self.declare_parameter('max_steering_angle', 0.9)
         self.declare_parameter('min_speed', 0.1)
         self.declare_parameter('max_speed', 15.0)
-        
-        # Base LQR Weights
+
+        # LQR base weights
         self.declare_parameter('adaptive.base_position_weight', 5.0)
         self.declare_parameter('adaptive.base_velocity_weight', 1.0)
         self.declare_parameter('adaptive.base_heading_weight', 6.0)
         self.declare_parameter('adaptive.base_acceleration_weight', 0.3)
         self.declare_parameter('adaptive.base_steering_weight', 4.0)
-        
-        # Adaptation Parameters
+
+        # Adaptation factors
         self.declare_parameter('adaptive.velocity_adaptation_factor', 0.5)
         self.declare_parameter('adaptive.curvature_adaptation_factor', 2.0)
         self.declare_parameter('adaptive.error_adaptation_factor', 1.5)
         self.declare_parameter('adaptive.performance_adaptation_factor', 0.3)
-        
         self.declare_parameter('adaptive.min_weight_multiplier', 0.2)
         self.declare_parameter('adaptive.max_weight_multiplier', 5.0)
         self.declare_parameter('adaptive.adaptation_rate', 0.1)
-        
+
+        # Speed regime thresholds for adaptive behaviour
         self.declare_parameter('adaptive.high_speed_threshold', 8.0)
         self.declare_parameter('adaptive.low_speed_threshold', 2.0)
         self.declare_parameter('adaptive.high_curvature_threshold', 1.0)
         self.declare_parameter('adaptive.moderate_curvature_threshold', 0.3)
-        
-        # Control Parameters
+
+        # Control loop
         self.declare_parameter('control_hz', 20.0)
         self.declare_parameter('lookahead_distance', 1.5)
         self.declare_parameter('enable_feedforward', True)
-        
-        # Anti-Wobble Parameters
-        self.declare_parameter('min_lookahead_distance', 0.7)
-        self.declare_parameter('max_lookahead_distance', 2.5)
-        self.declare_parameter('lookahead_time', 0.8)
+        self.declare_parameter('speed_ramp_rate', 0.5)
+
+        # Steering rate limiter
         self.declare_parameter('enable_steering_rate_limit', True)
         self.declare_parameter('max_steering_rate', 1.5)
-        
-        # Curve Detection
+
+        # Curve detection and speed reduction
         self.declare_parameter('enable_curve_detection', True)
         self.declare_parameter('curve_lookahead_points', 5)
         self.declare_parameter('max_curvature_threshold', 1.0)
         self.declare_parameter('curve_speed_factor', 0.7)
-        
-        # Safety Parameters
+
+        # Solve-timeout safety gate
         self.declare_parameter('enable_safety_checks', False)
         self.declare_parameter('safety_timeout', 1.0)
         self.declare_parameter('emergency_brake_threshold', 2.0)
-        
-        # Safety Monitor Parameters
+
+        # Safety monitor subsystem
         self.declare_parameter('safety.enable_safety_monitor', True)
         self.declare_parameter('safety.min_obstacle_distance', 1.5)
         self.declare_parameter('safety.emergency_brake_distance', 0.8)
@@ -476,7 +471,7 @@ class AdaptiveLQRNode(Node):
         self.declare_parameter('safety.safety_decel_rate', 2.0)
         self.declare_parameter('safety.emergency_decel_rate', 5.0)
         self.declare_parameter('safety.min_safe_speed', 1.0)
-        
+
         # Topics
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('reference_topic', '/horizon_mapper/reference_trajectory')
@@ -484,74 +479,65 @@ class AdaptiveLQRNode(Node):
         self.declare_parameter('control_topic', '/drive')
         self.declare_parameter('pose_estimate_topic', '/initialpose')
         self.declare_parameter('lidar_topic', '/scan')
-        
-        # QoS and Logging
+
+        # Logging
         self.declare_parameter('qos_depth', 10)
         self.declare_parameter('debug', False)
-        self.declare_parameter('performance_logging_enabled', True)
         self.declare_parameter('log_frequency_divider', 10)
 
     def _load_parameters(self):
-        """Load all parameters including adaptive configuration."""
-        
-        # Vehicle Parameters
+        # Vehicle
         self.wheelbase = self.get_parameter('wheelbase').value
         self.dt = self.get_parameter('dt').value
-        
-        # Control Limits
+
+        # Speed limits
         self.max_acceleration = self.get_parameter('max_acceleration').value
-        self.max_deceleration = self.get_parameter('max_deceleration').value
         self.max_steering_angle = self.get_parameter('max_steering_angle').value
         self.min_speed = self.get_parameter('min_speed').value
         self.max_speed = self.get_parameter('max_speed').value
-        
-        # Load adaptive parameters
+
+        # Build AdaptiveParams from config
         self.adaptive_params = AdaptiveParams(
             base_position_weight=self.get_parameter('adaptive.base_position_weight').value,
             base_velocity_weight=self.get_parameter('adaptive.base_velocity_weight').value,
             base_heading_weight=self.get_parameter('adaptive.base_heading_weight').value,
             base_acceleration_weight=self.get_parameter('adaptive.base_acceleration_weight').value,
             base_steering_weight=self.get_parameter('adaptive.base_steering_weight').value,
-            
             velocity_adaptation_factor=self.get_parameter('adaptive.velocity_adaptation_factor').value,
             curvature_adaptation_factor=self.get_parameter('adaptive.curvature_adaptation_factor').value,
             error_adaptation_factor=self.get_parameter('adaptive.error_adaptation_factor').value,
             performance_adaptation_factor=self.get_parameter('adaptive.performance_adaptation_factor').value,
-            
             min_weight_multiplier=self.get_parameter('adaptive.min_weight_multiplier').value,
             max_weight_multiplier=self.get_parameter('adaptive.max_weight_multiplier').value,
             adaptation_rate=self.get_parameter('adaptive.adaptation_rate').value,
-            
             high_speed_threshold=self.get_parameter('adaptive.high_speed_threshold').value,
             low_speed_threshold=self.get_parameter('adaptive.low_speed_threshold').value,
             high_curvature_threshold=self.get_parameter('adaptive.high_curvature_threshold').value,
-            moderate_curvature_threshold=self.get_parameter('adaptive.moderate_curvature_threshold').value
+            moderate_curvature_threshold=self.get_parameter('adaptive.moderate_curvature_threshold').value,
         )
-        
-        # Control Parameters
+
+        # Control loop
         self.control_hz = self.get_parameter('control_hz').value
         self.lookahead_distance = self.get_parameter('lookahead_distance').value
         self.enable_feedforward = self.get_parameter('enable_feedforward').value
-        
-        # Anti-Wobble Parameters
-        self.min_lookahead_distance = self.get_parameter('min_lookahead_distance').value
-        self.max_lookahead_distance = self.get_parameter('max_lookahead_distance').value
-        self.lookahead_time = self.get_parameter('lookahead_time').value
+        self.speed_ramp_rate = self.get_parameter('speed_ramp_rate').value
+
+        # Steering rate limiter
         self.enable_steering_rate_limit = self.get_parameter('enable_steering_rate_limit').value
         self.max_steering_rate = self.get_parameter('max_steering_rate').value
-        
-        # Curve Detection
+
+        # Curve detection
         self.enable_curve_detection = self.get_parameter('enable_curve_detection').value
         self.curve_lookahead_points = self.get_parameter('curve_lookahead_points').value
         self.max_curvature_threshold = self.get_parameter('max_curvature_threshold').value
         self.curve_speed_factor = self.get_parameter('curve_speed_factor').value
-        
-        # Safety Parameters
+
+        # Solve-timeout gate
         self.enable_safety_checks = self.get_parameter('enable_safety_checks').value
         self.safety_timeout = self.get_parameter('safety_timeout').value
         self.emergency_brake_threshold = self.get_parameter('emergency_brake_threshold').value
-        
-        # Load safety monitor parameters
+
+        # Safety monitor subsystem
         self.enable_safety_monitor = self.get_parameter('safety.enable_safety_monitor').value
         self.safety_params = SafetyParams(
             min_obstacle_distance=self.get_parameter('safety.min_obstacle_distance').value,
@@ -563,9 +549,9 @@ class AdaptiveLQRNode(Node):
             steering_oscillation_threshold=self.get_parameter('safety.steering_oscillation_threshold').value,
             safety_decel_rate=self.get_parameter('safety.safety_decel_rate').value,
             emergency_decel_rate=self.get_parameter('safety.emergency_decel_rate').value,
-            min_safe_speed=self.get_parameter('safety.min_safe_speed').value
+            min_safe_speed=self.get_parameter('safety.min_safe_speed').value,
         )
-        
+
         # Topics
         self.odom_topic = self.get_parameter('odom_topic').value
         self.reference_topic = self.get_parameter('reference_topic').value
@@ -573,19 +559,15 @@ class AdaptiveLQRNode(Node):
         self.control_topic = self.get_parameter('control_topic').value
         self.pose_estimate_topic = self.get_parameter('pose_estimate_topic').value
         self.lidar_topic = self.get_parameter('lidar_topic').value
-        
-        # QoS and Logging
+
+        # Logging
         self.qos_depth = self.get_parameter('qos_depth').value
         self.debug = self.get_parameter('debug').value
         self.enable_logging = self.debug
-        self.performance_logging_enabled = self.get_parameter('performance_logging_enabled').value
         self.log_frequency_divider = self.get_parameter('log_frequency_divider').value
 
     def _initialize_adaptive_controller(self):
-        """Initialize the fully adaptive LQR controller."""
-        
         try:
-            # Initialize adaptive LQR controller
             self.lqr_controller = AdaptiveLQRController(
                 wheelbase=self.wheelbase,
                 dt=self.dt,
@@ -596,7 +578,6 @@ class AdaptiveLQRNode(Node):
                 logger=self.get_logger()
             )
 
-            # Initialize kinematic model
             self.kinematic_model = KinematicBicycleModel(self.wheelbase, self.dt)
 
             self.get_logger().info(
@@ -613,8 +594,6 @@ class AdaptiveLQRNode(Node):
             raise e
 
     def _initialize_safety_monitor(self):
-        """Initialize the safety monitoring system."""
-        
         if self.enable_safety_monitor:
             try:
                 self.safety_monitor = SafetyMonitor(
@@ -638,22 +617,6 @@ class AdaptiveLQRNode(Node):
             self.get_logger().info("Safety monitor disabled")
 
     def _initialize_enhanced_controllers(self):
-        """Initialize enhanced control components with RViz integration.
-        
-        Features:
-        - RViz 2D Pose Estimate to set initial vehicle pose
-        - Conservative speed ramping (0.5 m/s per second)
-        - Curve detection and steering rate limiting
-        """
-        
-        self.get_logger().info(
-            "Enhanced controllers initialized:\n"
-            "  - RViz pose integration: Use '2D Pose Estimate' tool\n"
-            "  - Speed ramping: Conservative 0.5 m/s per second\n"
-            "  - Trajectory tracking with safety monitoring"
-        )
-        
-        # Simple curve analyzer implementation
         self.curve_analyzer = None
         self.adaptive_lookahead = None
         self.steering_rate_limiter = None
@@ -672,14 +635,11 @@ class AdaptiveLQRNode(Node):
         
         self.get_logger().info(
             f"Anti-wobble controllers ready | curve_detect={'on' if self.enable_curve_detection else 'off'} "
-            f"lookahead={self.min_lookahead_distance}-{self.max_lookahead_distance}m "
+            f"lookahead={self.lookahead_distance}m "
             f"steer_rate_limit={'on' if self.enable_steering_rate_limit else 'off'}"
         )
 
     def _initialize_state(self):
-        """Initialize node state variables."""
-        
-        # Vehicle state
         self.current_pose = None
         self.current_velocity = 0.0
         self.current_angular_velocity = 0.0
@@ -737,11 +697,8 @@ class AdaptiveLQRNode(Node):
             self.get_logger().info(f"Control still blocked: {reason}")
 
     def _setup_subscriptions(self):
-        """Set up ROS2 subscriptions."""
-        
         from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
-        
-        # QoS profiles
+
         sensor_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
@@ -754,7 +711,6 @@ class AdaptiveLQRNode(Node):
             depth=self.qos_depth
         )
         
-        # Odometry subscription
         self.odom_subscription = self.create_subscription(
             Odometry,
             self.odom_topic,
@@ -762,31 +718,27 @@ class AdaptiveLQRNode(Node):
             sensor_qos
         )
         
-        # Reference trajectory subscription
         self.reference_subscription = self.create_subscription(
             VehicleStateArray,
             self.reference_topic,
             self.reference_callback,
             reliable_qos
         )
-        
-        # Path status subscription
+
         self.status_subscription = self.create_subscription(
             Bool,
             self.status_topic,
             self.status_callback,
             reliable_qos
         )
-        
-        # Initial pose subscription (for reset)
+
         self.pose_subscription = self.create_subscription(
             PoseStamped,
             self.pose_estimate_topic,
             self.pose_estimate_callback,
             reliable_qos
         )
-        
-        # Lidar subscription for safety monitoring
+
         if self.enable_safety_monitor:
             self.lidar_subscription = self.create_subscription(
                 LaserScan,
@@ -799,24 +751,20 @@ class AdaptiveLQRNode(Node):
         self.get_logger().info("Subscriptions ready")
 
     def _setup_publishers(self):
-        """Set up ROS2 publishers including adaptive monitoring."""
-        
         from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
-        
+
         reliable_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
             depth=self.qos_depth
         )
-        
-        # Control command publisher
+
         self.control_publisher = self.create_publisher(
             AckermannDriveStamped,
             self.control_topic,
             reliable_qos
         )
-        
-        # Diagnostics publisher
+
         self.diagnostics_publisher = self.create_publisher(
             DiagnosticArray,
             '/lqr_controller/diagnostics',
@@ -829,29 +777,24 @@ class AdaptiveLQRNode(Node):
             '/adaptive_lqr/adaptation_status',
             reliable_qos
         )
-        
+
         self.current_weights_publisher = self.create_publisher(
             Float32,
             '/adaptive_lqr/current_steering_weight',
             reliable_qos
         )
-        
+
         self.performance_quality_publisher = self.create_publisher(
             Float32,
             '/adaptive_lqr/tracking_quality',
             reliable_qos
         )
-        
+
         self.get_logger().info("Publishers ready")
 
     def _setup_timers(self):
-        """Set up periodic timers."""
-        
-        # Main control timer
         control_period = 1.0 / self.control_hz
         self.control_timer = self.create_timer(control_period, self.control_callback)
-        
-        # Diagnostics timer (1 Hz)
         self.diagnostics_timer = self.create_timer(1.0, self.publish_diagnostics)
         
         self.get_logger().info(f"Timers ready | control={self.control_hz}Hz")
@@ -1038,28 +981,36 @@ class AdaptiveLQRNode(Node):
         
         if not self.enable_feedforward:
             return np.zeros(2)
-        
-        # Basic feedforward
-        target_velocity = reference_state[2]
+
+        # Cap reference velocity to max_speed — this is what makes max_speed
+        # actually limit the feedforward acceleration demand.
+        target_velocity = min(reference_state[2], self.max_speed)
+
+        # Reduce speed on curves when curve detection is active
+        if self.enable_curve_detection:
+            curvature = analysis_info.get('curvature', 0.0)
+            if abs(curvature) > self.max_curvature_threshold * 0.5:
+                target_velocity = target_velocity * self.curve_speed_factor
+
         velocity_error = target_velocity - self.current_velocity
-        
-        # Simple velocity control
-        feedforward_acceleration = 2.0 * velocity_error  # P-controller
+
+        # P-controller feedforward acceleration
+        feedforward_acceleration = 2.0 * velocity_error
         feedforward_acceleration = np.clip(
             feedforward_acceleration,
             -self.max_acceleration,
             self.max_acceleration
         )
-        
+
         # Curve-adapted steering feedforward
         curvature = analysis_info.get('curvature', 0.0)
-        feedforward_steering = curvature * 0.1  # Simple geometric relationship
+        feedforward_steering = curvature * 0.1
         feedforward_steering = np.clip(
             feedforward_steering,
             -self.max_steering_angle,
             self.max_steering_angle
         )
-        
+
         return np.array([feedforward_acceleration, feedforward_steering])
 
     def find_closest_reference_point(self, current_state: np.ndarray) -> int:
@@ -1142,10 +1093,8 @@ class AdaptiveLQRNode(Node):
                 self.publish_emergency_stop("safety gate rejected state")
                 return
 
-            # Get current state
             current_state = self.get_current_state()
 
-            # Validate current state
             if not self.kinematic_model.validate_state(current_state):
                 self.get_logger().warning(
                     f"Invalid current state, stopping | state={current_state.tolist()} | {self._get_runtime_snapshot()}"
@@ -1153,7 +1102,6 @@ class AdaptiveLQRNode(Node):
                 self.publish_emergency_stop("invalid current state")
                 return
 
-            # Update safety monitor with current vehicle state
             if self.safety_monitor:
                 self.safety_monitor.update_vehicle_state(
                     steering_angle=self.last_control_command[1],
@@ -1161,16 +1109,10 @@ class AdaptiveLQRNode(Node):
                     velocity=self.current_velocity
                 )
 
-            # Get enhanced reference state with curve analysis
             reference_state, analysis_info = self.get_enhanced_reference_state(current_state)
-
-            # Get enhanced feedforward control
             feedforward_control = self.get_enhanced_feedforward_control(reference_state, analysis_info)
-
-            # Find current trajectory index for adaptation
             current_index = self.find_closest_reference_point(current_state)
 
-            # Compute adaptive LQR control with full trajectory information
             control = self.lqr_controller.compute_control(
                 current_state,
                 reference_state,
@@ -1179,7 +1121,6 @@ class AdaptiveLQRNode(Node):
                 current_index=current_index
             )
 
-            # Apply steering rate limiting if enabled
             if self.steering_rate_limiter is not None:
                 control[1] = self.steering_rate_limiter.limit_steering_rate(control[1])
 
@@ -1189,19 +1130,17 @@ class AdaptiveLQRNode(Node):
                     control, self.current_velocity
                 )
                 
-                # Check for emergency stop
                 safety_status = self.safety_monitor.get_safety_status()
                 if safety_status['emergency_stop_required']:
                     self.get_logger().warning(
                         "Emergency stop required by safety monitor | "
                         f"min_obstacle={safety_status['min_obstacle_distance']:.2f}m "
                         f"collision_imminent={safety_status['collision_imminent']} "
-                        f"wobbling={safety_status['wobbling']}"
+                        f"wobbling={safety_status['wobbling_detected']}"
                     )
                     self.publish_emergency_stop("safety monitor emergency stop")
                     return
 
-            # Validate control output
             if not self.kinematic_model.validate_control(control, self.max_acceleration, self.max_steering_angle):
                 self.get_logger().warning(
                     f"Invalid control output, stopping | accel={control[0]:.3f} steer={control[1]:.3f} | "
@@ -1210,63 +1149,50 @@ class AdaptiveLQRNode(Node):
                 self.publish_emergency_stop("invalid control output")
                 return
 
-            # Store last control command for safety monitoring
             self.last_control_command = control.copy()
-
-            # Publish control command
             self.publish_control_command(control, reference_state)
-
-            # Publish enhanced diagnostics including adaptation and safety info
             self.publish_enhanced_debug_info(analysis_info)
             self.publish_adaptation_status()
             self.publish_safety_status()
 
-            # Track performance
-            if self.performance_logging_enabled:
-                solve_time = time.time() - start_time
-                self.control_loop_times.append(solve_time)
-
-                if len(self.control_loop_times) > 1000:
-                    self.control_loop_times = self.control_loop_times[-1000:]
+            # Track solve timing — always collected, reported in /diagnostics
+            solve_time = time.time() - start_time
+            self.control_loop_times.append(solve_time)
+            if len(self.control_loop_times) > 1000:
+                self.control_loop_times = self.control_loop_times[-1000:]
 
             # Reset failure count on success
             self.consecutive_failures = 0
             self.last_successful_solve_time = time.time()
             self.control_active = True
 
+            # Research-format step log — emitted every log_frequency_divider steps,
+            # always on (not gated by debug mode).
             if self.control_iteration_count == 1 or self.control_iteration_count % self.log_frequency_divider == 0:
-                self.get_logger().info(
-                    f"Control step {self.control_iteration_count}: "
-                    f"ref_idx={current_index} ref_points={len(self.reference_trajectory)} "
-                    f"curvature={analysis_info.get('curvature', 0.0):.3f} "
-                    f"lookahead={analysis_info.get('lookahead_distance', self.lookahead_distance):.2f}m "
-                    f"{self._get_runtime_snapshot()}"
-                )
-
-            # Enhanced debug logging with adaptation and safety info
-            if (self.debug and
-                    self.control_iteration_count % (self.log_frequency_divider * 2) == 0):
-
                 adaptation_info = self.lqr_controller.get_adaptation_info()
                 current_weights = adaptation_info['current_weights']
-                performance_metrics = adaptation_info['performance_metrics']
+                perf = adaptation_info['performance_metrics']
 
-                safety_info = ""
+                safety_str = ""
                 if self.safety_monitor:
-                    safety_status = self.safety_monitor.get_safety_status()
-                    safety_info = (
-                        f" | safety={'active' if safety_status['safety_active'] else 'ok'} "
-                        f"obs={safety_status['min_obstacle_distance']:.2f}m"
+                    ss = self.safety_monitor.get_safety_status()
+                    safety_str = (
+                        f" | safety={'ACTIVE' if ss['safety_active'] else 'ok'}"
+                        f" obs={ss['min_obstacle_distance']:.2f}m"
                     )
 
                 self.get_logger().info(
                     f"[{self.control_iteration_count}] "
-                    f"w=pos:{current_weights['position']:.2f} "
+                    f"v={self.current_velocity:.2f}m/s v_ref={reference_state[2]:.2f}m/s "
+                    f"a={control[0]:.3f} steer={control[1]:.3f} "
+                    f"| ref_idx={current_index}/{len(self.reference_trajectory)} "
+                    f"curv={analysis_info.get('curvature', 0.0):.3f} "
+                    f"| w=pos:{current_weights['position']:.2f} "
                     f"head:{current_weights['heading']:.2f} "
-                    f"steer:{current_weights['steering']:.2f} | "
-                    f"quality={performance_metrics.get('tracking_quality', 0.0):.3f} | "
-                    f"a={control[0]:.3f} steer={control[1]:.3f}"
-                    f"{safety_info}"
+                    f"steer:{current_weights['steering']:.2f} "
+                    f"| quality={perf.get('tracking_quality', 0.0):.3f} "
+                    f"solve={solve_time*1000:.1f}ms"
+                    f"{safety_str}"
                 )
 
         except Exception as e:
@@ -1278,44 +1204,41 @@ class AdaptiveLQRNode(Node):
                 self.publish_emergency_stop()
 
     def publish_control_command(self, control: np.ndarray, reference_state: np.ndarray = None):
-        """Publish control command to the vehicle.
-        
-        Args:
-            control: Control input [acceleration, steering_angle]
-            reference_state: Reference state [x_ref, y_ref, v_ref, theta_ref] for better speed tracking
-        """
         
         try:
             msg = AckermannDriveStamped()
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = "base_link"
-            
+
             msg.drive.acceleration = float(control[0])
             msg.drive.steering_angle = float(control[1])
-            
-            # Use reference velocity but with conservative ramping
+
+            # Speed command: ramp toward the reference velocity, hard-capped at max_speed.
+            # min_speed is enforced upstream in the feedforward, not here, so the car
+            # can still decelerate to a full stop when needed.
             if reference_state is not None:
-                target_velocity = reference_state[2]
-                # Conservative ramp to target velocity for safety
-                ramp_rate = 0.5  # Slower ramp: 0.5 m/s per second
-                
+                target_velocity = min(reference_state[2], self.max_speed)
                 if self.current_velocity < target_velocity:
                     msg.drive.speed = float(min(
-                        self.current_velocity + ramp_rate * self.dt,
+                        self.current_velocity + self.speed_ramp_rate * self.dt,
                         target_velocity
                     ))
                 else:
-                    # Decelerate conservatively
                     msg.drive.speed = float(max(
-                        self.current_velocity - ramp_rate * self.dt,
+                        self.current_velocity - self.speed_ramp_rate * self.dt,
                         target_velocity
                     ))
             else:
-                # Fallback: use integrated acceleration command
-                msg.drive.speed = float(self.current_velocity + control[0] * self.dt)
-            
-            # Ensure speed is within valid range
+                msg.drive.speed = float(
+                    min(self.current_velocity + control[0] * self.dt, self.max_speed)
+                )
+
             msg.drive.speed = float(np.clip(msg.drive.speed, 0.0, self.max_speed))
+
+            # Suppress positive acceleration when already at the speed limit so
+            # firmware that uses the acceleration field also respects max_speed.
+            if self.current_velocity >= self.max_speed:
+                msg.drive.acceleration = float(min(msg.drive.acceleration, 0.0))
             
             self.control_publisher.publish(msg)
             self.last_control_time = time.time()
@@ -1454,64 +1377,38 @@ class AdaptiveLQRNode(Node):
                 self.get_logger().warning(f"Failed to publish adaptation status: {e}")
 
     def publish_enhanced_debug_info(self, analysis_info: Dict):
-        """Publish enhanced debug information."""
-        
-        # This method can be used for additional debug publishing
-        # Currently just placeholder
         pass
 
     def publish_diagnostics(self):
-        """Publish enhanced diagnostics including adaptive information."""
-        
         try:
             diag_msg = DiagnosticArray()
             diag_msg.header.stamp = self.get_clock().now().to_msg()
-            
-            # Main controller status
+
             controller_status = DiagnosticStatus()
             controller_status.name = "adaptive_lqr_controller"
             controller_status.hardware_id = "lqr_controller_node"
-            
-            if self.control_active:
-                controller_status.level = DiagnosticStatus.OK
-                controller_status.message = "Controller active and adaptive"
-            else:
-                controller_status.level = DiagnosticStatus.WARN
-                controller_status.message = "Controller inactive"
-            
-            # Basic status
-            controller_status.values.append(
-                KeyValue(key="control_active", value=str(self.control_active))
-            )
-            controller_status.values.append(
-                KeyValue(key="path_ready", value=str(self.path_ready))
-            )
-            controller_status.values.append(
-                KeyValue(key="reference_points", value=str(len(self.reference_trajectory)))
-            )
-            controller_status.values.append(
-                KeyValue(key="current_velocity", value=f"{self.current_velocity:.2f}")
-            )
-            controller_status.values.append(
-                KeyValue(key="consecutive_failures", value=str(self.consecutive_failures))
-            )
-            
-            # Performance metrics
-            if self.performance_logging_enabled and self.control_loop_times:
+            controller_status.level = DiagnosticStatus.OK if self.control_active else DiagnosticStatus.WARN
+            controller_status.message = "active" if self.control_active else "inactive"
+
+            controller_status.values.append(KeyValue(key="control_active", value=str(self.control_active)))
+            controller_status.values.append(KeyValue(key="path_ready", value=str(self.path_ready)))
+            controller_status.values.append(KeyValue(key="reference_points", value=str(len(self.reference_trajectory))))
+            controller_status.values.append(KeyValue(key="current_velocity", value=f"{self.current_velocity:.2f}"))
+            controller_status.values.append(KeyValue(key="consecutive_failures", value=str(self.consecutive_failures)))
+
+            if self.control_loop_times:
                 controller_status.values.append(
-                    KeyValue(key="avg_control_time", value=f"{np.mean(self.control_loop_times):.6f}")
+                    KeyValue(key="avg_solve_ms", value=f"{np.mean(self.control_loop_times)*1000:.2f}")
                 )
                 controller_status.values.append(
-                    KeyValue(key="max_control_time", value=f"{np.max(self.control_loop_times):.6f}")
+                    KeyValue(key="max_solve_ms", value=f"{np.max(self.control_loop_times)*1000:.2f}")
                 )
-            
-            # Add adaptive controller information
+
             try:
                 adaptation_info = self.lqr_controller.get_adaptation_info()
                 current_weights = adaptation_info['current_weights']
                 performance_metrics = adaptation_info['performance_metrics']
-                
-                # Add adaptive metrics
+
                 controller_status.values.append(
                     KeyValue(key="adaptive_position_weight", value=f"{current_weights['position']:.3f}")
                 )
@@ -1536,59 +1433,44 @@ class AdaptiveLQRNode(Node):
                     KeyValue(key="adaptation_error", value=str(e))
                 )
             
-            # Add safety monitor status
             if self.safety_monitor:
                 try:
-                    safety_status = self.safety_monitor.get_safety_status()
-                    controller_status.values.append(
-                        KeyValue(key="safety_active", value=str(safety_status['safety_active']))
-                    )
-                    controller_status.values.append(
-                        KeyValue(key="min_obstacle_distance", value=f"{safety_status['min_obstacle_distance']:.2f}")
-                    )
-                    controller_status.values.append(
-                        KeyValue(key="wobbling_detected", value=str(safety_status['wobbling_detected']))
-                    )
-                    controller_status.values.append(
-                        KeyValue(key="safety_interventions", value=str(safety_status['safety_interventions']))
-                    )
+                    ss = self.safety_monitor.get_safety_status()
+                    controller_status.values.append(KeyValue(key="safety_active", value=str(ss['safety_active'])))
+                    controller_status.values.append(KeyValue(key="min_obstacle_m", value=f"{ss['min_obstacle_distance']:.2f}"))
+                    controller_status.values.append(KeyValue(key="wobbling", value=str(ss['wobbling_detected'])))
+                    controller_status.values.append(KeyValue(key="safety_interventions", value=str(ss['safety_interventions'])))
                 except Exception as e:
-                    controller_status.values.append(
-                        KeyValue(key="safety_error", value=str(e))
-                    )
-            
+                    controller_status.values.append(KeyValue(key="safety_error", value=str(e)))
+
             diag_msg.status.append(controller_status)
             self.diagnostics_publisher.publish(diag_msg)
-            
+
         except Exception as e:
             self.get_logger().error(f"Error publishing diagnostics: {e}")
 
 
-# Helper classes for enhanced features
 class SimpleCurveAnalyzer:
-    """Simple curve analysis for trajectory segments."""
-    
+    # Menger curvature estimate over a short lookahead window.
     def __init__(self, lookahead_points: int = 5, max_curvature_threshold: float = 1.0):
         self.lookahead_points = lookahead_points
         self.max_curvature_threshold = max_curvature_threshold
-    
+
     def analyze_segment(self, trajectory: List[Dict], current_index: int) -> Dict:
-        """Analyze trajectory segment for curvature and complexity."""
-        
         if len(trajectory) < 3 or current_index >= len(trajectory):
             return {'curvature': 0.0, 'complexity': 0.0}
-        
+
         end_index = min(current_index + self.lookahead_points, len(trajectory))
         segment = trajectory[current_index:end_index]
-        
+
         curvatures = []
         for i in range(1, len(segment) - 1):
             try:
                 p1 = np.array([segment[i-1]['x'], segment[i-1]['y']])
                 p2 = np.array([segment[i]['x'], segment[i]['y']])
                 p3 = np.array([segment[i+1]['x'], segment[i+1]['y']])
-                
-                # Compute curvature using three points
+
+                # Menger curvature: 2 * area / (|p1p2| * |p2p3| * |p1p3|)
                 a = np.linalg.norm(p2 - p1)
                 b = np.linalg.norm(p3 - p2)
                 c = np.linalg.norm(p3 - p1)
@@ -1610,31 +1492,23 @@ class SimpleCurveAnalyzer:
 
 
 class SteeringRateLimiter:
-    """Limit steering angle rate of change."""
-    
     def __init__(self, max_rate: float, dt: float):
         self.max_rate = max_rate
         self.dt = dt
         self.last_steering = 0.0
-    
+
     def limit_steering_rate(self, desired_steering: float) -> float:
-        """Apply rate limiting to steering command."""
-        
         max_change = self.max_rate * self.dt
         steering_change = desired_steering - self.last_steering
-        
         if abs(steering_change) > max_change:
             limited_steering = self.last_steering + np.sign(steering_change) * max_change
         else:
             limited_steering = desired_steering
-        
         self.last_steering = limited_steering
         return limited_steering
 
 
 def main(args=None):
-    """Main entry point for the fully adaptive LQR controller node."""
-    
     rclpy.init(args=args)
 
     try:
