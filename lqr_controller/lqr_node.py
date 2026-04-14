@@ -664,13 +664,15 @@ class AdaptiveLQRNode(Node):
         self.current_curvature = 0.0
         self.current_lookahead_distance = self.lookahead_distance
         self.target_velocity = 0.0
-        
+
         # Safety state
         self.last_control_command = np.zeros(2)
         self._last_control_block_reason = None
         self._last_emergency_stop_reason = None
         self._last_emergency_stop_time = 0.0
         
+        self.last_commanded_speed = 0.0
+
         self.get_logger().info("Node state initialized")
 
     def _get_runtime_snapshot(self) -> str:
@@ -890,6 +892,7 @@ class AdaptiveLQRNode(Node):
             # Reset velocity when pose is manually set
             self.current_velocity = 0.0
             self.current_angular_velocity = 0.0
+            self.last_commanded_speed = 0.0
             
             # Reset trajectory tracking to find new starting point
             self.current_reference_index = 0
@@ -1213,25 +1216,23 @@ class AdaptiveLQRNode(Node):
             msg.drive.acceleration = float(control[0])
             msg.drive.steering_angle = float(control[1])
 
-            # Speed command: ramp toward the reference velocity, hard-capped at max_speed.
-            # min_speed is enforced upstream in the feedforward, not here, so the car
-            # can still decelerate to a full stop when needed.
             if reference_state is not None:
                 target_velocity = min(reference_state[2], self.max_speed)
-                if self.current_velocity < target_velocity:
-                    msg.drive.speed = float(min(
-                        self.current_velocity + self.speed_ramp_rate * self.dt,
-                        target_velocity
-                    ))
+                step = self.speed_ramp_rate * self.dt
+                if self.last_commanded_speed < target_velocity:
+                    self.last_commanded_speed = min(
+                        self.last_commanded_speed + step, target_velocity
+                    )
                 else:
-                    msg.drive.speed = float(max(
-                        self.current_velocity - self.speed_ramp_rate * self.dt,
-                        target_velocity
-                    ))
+                    self.last_commanded_speed = max(
+                        self.last_commanded_speed - step, target_velocity
+                    )
+                msg.drive.speed = float(self.last_commanded_speed)
             else:
-                msg.drive.speed = float(
-                    min(self.current_velocity + control[0] * self.dt, self.max_speed)
+                self.last_commanded_speed = min(
+                    self.last_commanded_speed + control[0] * self.dt, self.max_speed
                 )
+                msg.drive.speed = float(self.last_commanded_speed)
 
             msg.drive.speed = float(np.clip(msg.drive.speed, 0.0, self.max_speed))
 

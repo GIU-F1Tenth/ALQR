@@ -110,6 +110,7 @@ class KinematicBicycleModel:
         """
         x, y, v, theta = state
         a, delta = control
+        v_lin = max(abs(v), 0.05)
 
         # Partial derivatives for A matrix (∂f/∂x)
         A = np.array([
@@ -125,7 +126,7 @@ class KinematicBicycleModel:
             [0.0, 0.0],
             [0.0, 0.0],
             [self.dt, 0.0],
-            [0.0, self.dt * v / (self.L * cos_delta_sq)]
+            [0.0, self.dt * v_lin / (self.L * cos_delta_sq)]
         ])
 
         return A, B
