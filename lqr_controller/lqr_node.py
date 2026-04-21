@@ -477,7 +477,7 @@ class AdaptiveLQRNode(Node):
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('reference_topic', '/horizon_mapper/reference_trajectory')
         self.declare_parameter('status_topic', '/horizon_mapper/path_ready')
-        self.declare_parameter('control_topic', '/drive')
+        self.declare_parameter('control_topic', '/lqr/drive')
         self.declare_parameter('pose_estimate_topic', '/initialpose')
         self.declare_parameter('lidar_topic', '/scan')
         
