@@ -403,7 +403,8 @@ class AdaptiveLQRNode(Node):
         self._setup_publishers()
         self._setup_timers()
 
-        self.get_logger().info("LQR controller node started")
+        mode = "ADAPTIVE" if self.use_adaptive_mode else "PURE LINE-FOLLOWING"
+        self.get_logger().info(f"LQR controller node started | mode={mode}")
 
     def _declare_parameters(self):
         # Vehicle
@@ -479,8 +480,11 @@ class AdaptiveLQRNode(Node):
         self.declare_parameter('control_topic', '/drive')
         self.declare_parameter('pose_estimate_topic', '/initialpose')
         self.declare_parameter('lidar_topic', '/scan')
+        
+        # Mode Selection
+        self.declare_parameter('use_adaptive_mode', True)
 
-        # Logging
+        # QoS and Logging
         self.declare_parameter('qos_depth', 10)
         self.declare_parameter('debug', False)
         self.declare_parameter('log_frequency_divider', 10)
@@ -559,8 +563,11 @@ class AdaptiveLQRNode(Node):
         self.control_topic = self.get_parameter('control_topic').value
         self.pose_estimate_topic = self.get_parameter('pose_estimate_topic').value
         self.lidar_topic = self.get_parameter('lidar_topic').value
+        
+        # Mode Selection
+        self.use_adaptive_mode = self.get_parameter('use_adaptive_mode').value
 
-        # Logging
+        # QoS and Logging
         self.qos_depth = self.get_parameter('qos_depth').value
         self.debug = self.get_parameter('debug').value
         self.enable_logging = self.debug
@@ -594,6 +601,13 @@ class AdaptiveLQRNode(Node):
             raise e
 
     def _initialize_safety_monitor(self):
+        """Initialize the safety monitoring system."""
+
+        if not self.use_adaptive_mode:
+            self.safety_monitor = None
+            self.get_logger().info("Safety monitor disabled (pure line-following mode)")
+            return
+
         if self.enable_safety_monitor:
             try:
                 self.safety_monitor = SafetyMonitor(
@@ -601,13 +615,13 @@ class AdaptiveLQRNode(Node):
                     enable_logging=self.debug,
                     logger=self.get_logger()
                 )
-                
+
                 self.get_logger().info(
                     f"Safety monitor ready | min_dist={self.safety_params.min_obstacle_distance}m "
                     f"max_angular_vel={self.safety_params.max_angular_velocity} rad/s "
                     f"e-brake={self.safety_params.emergency_brake_distance}m"
                 )
-                
+
             except Exception as e:
                 self.get_logger().error(f"Safety monitor init failed: {e}")
                 self.enable_safety_monitor = False
@@ -740,8 +754,9 @@ class AdaptiveLQRNode(Node):
             self.pose_estimate_callback,
             reliable_qos
         )
-
-        if self.enable_safety_monitor:
+        
+        # Lidar subscription for safety monitoring (adaptive mode only)
+        if self.use_adaptive_mode and self.enable_safety_monitor:
             self.lidar_subscription = self.create_subscription(
                 LaserScan,
                 self.lidar_topic,
@@ -1114,13 +1129,19 @@ class AdaptiveLQRNode(Node):
 
             reference_state, analysis_info = self.get_enhanced_reference_state(current_state)
             feedforward_control = self.get_enhanced_feedforward_control(reference_state, analysis_info)
+
+            # Find current trajectory index
             current_index = self.find_closest_reference_point(current_state)
 
+            # In pure line-following mode, pass trajectory=None to skip adaptive weight tuning
+            active_trajectory = self.reference_trajectory if self.use_adaptive_mode else None
+
+            # Compute LQR control
             control = self.lqr_controller.compute_control(
                 current_state,
                 reference_state,
                 feedforward_control,
-                trajectory=self.reference_trajectory,
+                trajectory=active_trajectory,
                 current_index=current_index
             )
 

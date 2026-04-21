@@ -3,6 +3,12 @@
 adaptive_lqr_controller_node:
   ros__parameters:
 
+    # --- Mode Selection ---
+    # true  = Adaptive LQR: uses lidar safety monitor + dynamic Q/R weight tuning
+    # false = Pure line-following
+    use_adaptive_mode: false
+
+
     # --- Vehicle ---
     wheelbase: 0.33       # [m] distance between axles
     dt: 0.02              # [s] control timestep (should match control_hz)
