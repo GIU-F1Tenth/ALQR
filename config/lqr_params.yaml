@@ -5,9 +5,15 @@ adaptive_lqr_controller_node:
 
     # --- Mode Selection ---
     # true  = Adaptive LQR: uses lidar safety monitor + dynamic Q/R weight tuning
-    # false = Pure line-following
+    # false = Pure line-following: fixed Q/R from lqr.* weights below, no lidar
     use_adaptive_mode: false
 
+    # --- Fixed LQR weights (pure line-following mode) ---
+    lqr.position_weight: 3.0        # Q diagonal for x and y
+    lqr.velocity_weight: 1.3        # Q diagonal for velocity
+    lqr.heading_weight: 6.4         # Q diagonal for heading
+    lqr.acceleration_weight: 0.3    # R diagonal for acceleration input
+    lqr.steering_weight: 4.3        # R diagonal for steering input
 
     # --- Vehicle ---
     wheelbase: 0.33       # [m] distance between axles

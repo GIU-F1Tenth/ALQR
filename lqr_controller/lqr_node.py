@@ -484,6 +484,13 @@ class AdaptiveLQRNode(Node):
         # Mode Selection
         self.declare_parameter('use_adaptive_mode', True)
 
+        # Fixed LQR weights (pure line-following mode)
+        self.declare_parameter('lqr.position_weight', 3.0)
+        self.declare_parameter('lqr.velocity_weight', 1.3)
+        self.declare_parameter('lqr.heading_weight', 6.4)
+        self.declare_parameter('lqr.acceleration_weight', 0.3)
+        self.declare_parameter('lqr.steering_weight', 4.3)
+
         # QoS and Logging
         self.declare_parameter('qos_depth', 10)
         self.declare_parameter('debug', False)
@@ -567,6 +574,13 @@ class AdaptiveLQRNode(Node):
         # Mode Selection
         self.use_adaptive_mode = self.get_parameter('use_adaptive_mode').value
 
+        # Fixed LQR weights (pure line-following mode)
+        self.lqr_position_weight = self.get_parameter('lqr.position_weight').value
+        self.lqr_velocity_weight = self.get_parameter('lqr.velocity_weight').value
+        self.lqr_heading_weight = self.get_parameter('lqr.heading_weight').value
+        self.lqr_acceleration_weight = self.get_parameter('lqr.acceleration_weight').value
+        self.lqr_steering_weight = self.get_parameter('lqr.steering_weight').value
+
         # QoS and Logging
         self.qos_depth = self.get_parameter('qos_depth').value
         self.debug = self.get_parameter('debug').value
@@ -587,14 +601,33 @@ class AdaptiveLQRNode(Node):
 
             self.kinematic_model = KinematicBicycleModel(self.wheelbase, self.dt)
 
-            self.get_logger().info(
-                f"LQR controller ready | weights: pos={self.adaptive_params.base_position_weight} "
-                f"vel={self.adaptive_params.base_velocity_weight} "
-                f"head={self.adaptive_params.base_heading_weight} | "
-                f"adapt_rate={self.adaptive_params.adaptation_rate} | "
-                f"speed_range={self.adaptive_params.low_speed_threshold}-"
-                f"{self.adaptive_params.high_speed_threshold} m/s"
-            )
+            if not self.use_adaptive_mode:
+                # Override Q/R with the fixed weights from lqr.* params.
+                # adapt_parameters() is already skipped upstream (trajectory=None),
+                # so these matrices will never be overwritten during operation.
+                self.lqr_controller.set_fixed_weights(
+                    position=self.lqr_position_weight,
+                    velocity=self.lqr_velocity_weight,
+                    heading=self.lqr_heading_weight,
+                    acceleration=self.lqr_acceleration_weight,
+                    steering=self.lqr_steering_weight,
+                )
+                self.get_logger().info(
+                    f"LQR ready (PURE mode) | fixed weights: "
+                    f"pos={self.lqr_position_weight} vel={self.lqr_velocity_weight} "
+                    f"head={self.lqr_heading_weight} accel={self.lqr_acceleration_weight} "
+                    f"steer={self.lqr_steering_weight}"
+                )
+            else:
+                self.get_logger().info(
+                    f"LQR ready (ADAPTIVE mode) | base weights: "
+                    f"pos={self.adaptive_params.base_position_weight} "
+                    f"vel={self.adaptive_params.base_velocity_weight} "
+                    f"head={self.adaptive_params.base_heading_weight} | "
+                    f"adapt_rate={self.adaptive_params.adaptation_rate} | "
+                    f"speed_range={self.adaptive_params.low_speed_threshold}-"
+                    f"{self.adaptive_params.high_speed_threshold} m/s"
+                )
 
         except Exception as e:
             self.get_logger().error(f"LQR controller init failed: {e}")

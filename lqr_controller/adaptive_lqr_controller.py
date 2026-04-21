@@ -556,6 +556,29 @@ class AdaptiveLQRController:
         
         return base_metrics
 
+    def set_fixed_weights(self, position: float, velocity: float, heading: float,
+                          acceleration: float, steering: float):
+        """
+        Lock Q/R to explicit fixed weights for pure line-following mode.
+        Overwrites current_weights and rebuilds the cost matrices so the gain
+        solver uses these values permanently (adaptation is already skipped
+        upstream by passing trajectory=None).
+        """
+        self.current_weights = {
+            'position': position,
+            'velocity': velocity,
+            'heading': heading,
+            'acceleration': acceleration,
+            'steering': steering
+        }
+        self.Q = self._build_Q_matrix()
+        self.R = self._build_R_matrix()
+        self.cached_K = None  # force gain recompute on next control call
+        self.log_info(
+            f"Fixed weights applied: pos={position} vel={velocity} "
+            f"head={heading} accel={acceleration} steer={steering}"
+        )
+
     def reset_adaptation(self):
         """Reset adaptive parameters to base values."""
         self.current_weights = {
@@ -565,14 +588,14 @@ class AdaptiveLQRController:
             'acceleration': self.adaptive_params.base_acceleration_weight,
             'steering': self.adaptive_params.base_steering_weight
         }
-        
+
         self.Q = self._build_Q_matrix()
         self.R = self._build_R_matrix()
         self.cached_K = None
-        
+
         self.performance_monitor = PerformanceMonitor()
         self.adaptation_history.clear()
-        
+
         self.log_info("Adaptive parameters reset to base values")
 
 
